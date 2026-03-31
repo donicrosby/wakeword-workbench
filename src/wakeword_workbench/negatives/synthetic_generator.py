@@ -1,0 +1,1 @@
+"""Synthetic negative sample generator."""

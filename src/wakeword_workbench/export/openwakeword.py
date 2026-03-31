@@ -1,0 +1,1 @@
+"""OpenWakeWord format exporter."""

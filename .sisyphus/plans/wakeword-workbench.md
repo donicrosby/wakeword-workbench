@@ -1439,7 +1439,7 @@ Wave FINAL (Verification - after ALL):
   **Commit**: YES
   - Message: `feat(eval): FAR calculator with cooldown`
 
-- [ ] **29. FRR Calculator**
+- [x] **29. FRR Calculator**
 
   **What to do**:
   - Implement `eval/frr.py` with `calculate_frr(predictions, ground_truth)`
@@ -1476,7 +1476,7 @@ Wave FINAL (Verification - after ALL):
   **Commit**: YES
   - Message: `feat(eval): FRR calculator`
 
-- [ ] **30. Threshold Sweep**
+- [x] **30. Threshold Sweep**
 
   **What to do**:
   - Implement `eval/threshold_sweep.py` with `sweep(predictions, ground_truth, thresholds=100)`
@@ -1513,7 +1513,7 @@ Wave FINAL (Verification - after ALL):
   **Commit**: YES
   - Message: `feat(eval): threshold sweep analysis`
 
-- [ ] **31. ROC Curve Generator**
+- [x] **31. ROC Curve Generator**
 
   **What to do**:
   - Implement `eval/roc.py` with `generate_roc(far_list, frr_list)`
@@ -1551,7 +1551,7 @@ Wave FINAL (Verification - after ALL):
   **Commit**: YES
   - Message: `feat(eval): ROC curve generator`
 
-- [ ] **32. Evaluation Report Formatter**
+- [x] **32. Evaluation Report Formatter**
 
   **What to do**:
   - Implement `eval/report.py` with `generate_report(results, format='json')`
@@ -1592,7 +1592,7 @@ Wave FINAL (Verification - after ALL):
 
 ### Wave 7: Hard Negative Mining (after Wave 6)
 
-- [ ] **33. Long Audio Processor**
+- [x] **33. Long Audio Processor**
 
   **What to do**:
   - Implement `mining/long_audio.py` with `process_long_audio(model, audio_path, window_size, hop_size)`
@@ -1631,7 +1631,7 @@ Wave FINAL (Verification - after ALL):
   **Commit**: YES
   - Message: `feat(mining): sliding window long audio processor`
 
-- [ ] **34. False Positive Extractor**
+- [x] **34. False Positive Extractor**
 
   **What to do**:
   - Implement `mining/extractor.py` with `extract_false_positives(predictions, audio_path, threshold, output_dir)`
@@ -1670,7 +1670,7 @@ Wave FINAL (Verification - after ALL):
   **Commit**: YES
   - Message: `feat(mining): false positive clip extractor`
 
-- [ ] **35. Dataset Merge-Back**
+- [x] **35. Dataset Merge-Back**
 
   **What to do**:
   - Implement `mining/merge_back.py` with `add_to_training(new_negatives_manifest, training_manifest)`

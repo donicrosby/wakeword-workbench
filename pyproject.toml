@@ -27,6 +27,7 @@ dependencies = [
     "soundfile>=0.12",
     "audiomentations>=0.35,<1.0",
     "structlog>=24.1",
+    "jellyfish>=1.0",
 ]
 
 [project.optional-dependencies]

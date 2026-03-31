@@ -256,7 +256,7 @@ class TestGainTransition:
 
     def test_gain_applied(self) -> None:
         """Test that gain is applied."""
-        gt = GainTransition(gain_range=(-20, -20), fade_samples=1000)
+        gt = GainTransition(gain_range=(-20, -20), fade_samples=1000, transition_prob=0.0)
         audio = np.array([0.5, 0.5], dtype=np.float32)
 
         result = gt.apply(audio, sr=16000)

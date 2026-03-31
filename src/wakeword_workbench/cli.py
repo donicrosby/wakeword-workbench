@@ -14,6 +14,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from wakeword_workbench import __version__
 from wakeword_workbench.config import ConfigError, load_config
 from wakeword_workbench.logging_config import configure_logging, get_logger
+from wakeword_workbench.tts.cache import TTSCache, DEFAULT_CACHE_DIR
 
 # Exit codes
 EXIT_SUCCESS = 0
@@ -134,6 +135,50 @@ def validate_command(
         raise typer.Exit(code=EXIT_CONFIG_ERROR)
 
     console.print("[bold green]✓[/bold green] Config validation passed")
+    raise typer.Exit(code=EXIT_SUCCESS)
+
+
+@app.command(name="cache-clear")
+def cache_clear_command(
+    cache_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--cache-dir",
+            help="TTS cache directory (default: ~/.cache/wakeword_workbench/tts/)",
+        ),
+    ] = None,
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Skip confirmation prompt",
+    ),
+) -> None:
+    """Clear the TTS synthesis cache."""
+    cache = TTSCache(cache_dir=cache_dir) if cache_dir else TTSCache()
+    stats = cache.get_stats()
+
+    if stats["num_entries"] == 0:
+        console.print("[yellow]Cache is already empty.[/yellow]")
+        raise typer.Exit(code=EXIT_SUCCESS)
+
+    console.print(f"[bold]TTS Cache[/bold]")
+    console.print(f"  Entries : {stats['num_entries']}")
+    console.print(f"  Size    : {stats['size_mb']:.2f} MB")
+    console.print(f"  Location: {cache._cache_dir}")
+
+    if not yes:
+        confirm = typer.prompt(
+            "\nClear all cached entries?",
+            default="n",
+            show_default=True,
+        )
+        if confirm.lower() not in ("y", "yes"):
+            console.print("[yellow]Aborted.[/yellow]")
+            raise typer.Exit(code=EXIT_SUCCESS)
+
+    cache.clear()
+    console.print("[bold green]✓[/bold green] Cache cleared successfully")
     raise typer.Exit(code=EXIT_SUCCESS)
 
 

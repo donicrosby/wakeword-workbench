@@ -204,7 +204,7 @@ Wave FINAL (Verification - after ALL):
 
 ### Wave 1: Foundation (ALL can start immediately)
 
-- [ ] **1. Project Scaffolding and UV Setup**
+- [x] **1. Project Scaffolding and UV Setup**
 
   **What to do**:
   - Initialize project with `uv init --lib wakeword-workbench`
@@ -248,7 +248,7 @@ Wave FINAL (Verification - after ALL):
   - Message: `chore: initial project setup with uv`
   - Files: `pyproject.toml`, `README.md`, `.gitignore`
 
-- [ ] **2. Directory Structure Setup**
+- [x] **2. Directory Structure Setup**
 
   **What to do**:
   - Create `src/wakeword_workbench/` package structure:
@@ -313,7 +313,7 @@ Wave FINAL (Verification - after ALL):
 
   **Commit**: YES (grouped with Task 1)
 
-- [ ] **3. Config System (YAML Loader and Validation)**
+- [x] **3. Config System (YAML Loader and Validation)**
 
   **What to do**:
   - Implement `config.py` with:
@@ -386,7 +386,7 @@ Wave FINAL (Verification - after ALL):
   **Commit**: YES
   - Message: `feat(config): YAML config loader with validation`
 
-- [ ] **4. CLI Entry Point (Typer)**
+- [x] **4. CLI Entry Point (Typer)**
 
   **What to do**:
   - Implement `cli.py` with:
@@ -429,7 +429,7 @@ Wave FINAL (Verification - after ALL):
   **Commit**: YES
   - Message: `feat(cli): typer CLI with run and validate commands`
 
-- [ ] **5. Test Infrastructure (pytest + TDD setup)**
+- [x] **5. Test Infrastructure (pytest + TDD setup)**
 
   **What to do**:
   - Create `tests/conftest.py` with:
@@ -474,7 +474,7 @@ Wave FINAL (Verification - after ALL):
   **Commit**: YES
   - Message: `test(infra): pytest setup with fixtures and coverage`
 
-- [ ] **6. Logging System (structlog)**
+- [x] **6. Logging System (structlog)**
 
   **What to do**:
   - Set up `structlog` configuration in `config.py` or new `logging.py`:

@@ -17,7 +17,7 @@ Example usage:
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -63,7 +63,7 @@ _log_file: Path | None = None
 
 def _add_timestamp(logger: object, method_name: str, event_dict: EventDict) -> EventDict:
     """Add ISO timestamp to log entries."""
-    event_dict["timestamp"] = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    event_dict["timestamp"] = datetime.now(UTC).isoformat(timespec="milliseconds")
     return event_dict
 
 
@@ -275,7 +275,11 @@ def _setup_file_logging(log_path: Path) -> None:
         # Fall back to console-only logging if file can't be opened
         import warnings
 
-        warnings.warn(f"Could not open log file {log_path}: {e}. Using console only.", UserWarning)
+        warnings.warn(
+            f"Could not open log file {log_path}: {e}. Using console only.",
+            UserWarning,
+            stacklevel=2,
+        )
         _file_logger = None
 
 

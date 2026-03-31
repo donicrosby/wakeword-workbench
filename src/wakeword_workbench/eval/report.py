@@ -6,7 +6,7 @@ import csv
 import io
 import json
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -244,7 +244,7 @@ def generate_report(
 
     eer, optimal_threshold = _calculate_eer(predictions, ground_truth, audio_duration_hours)
 
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
 
     report = EvaluationReport(
         far=far,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import random
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -53,7 +52,7 @@ class MergeResult:
 
 # Re-export Manifest type for use in annotations
 if TYPE_CHECKING:
-    from .metadata import Manifest, ManifestEntry
+    from .metadata import Manifest
 
 
 def merge(

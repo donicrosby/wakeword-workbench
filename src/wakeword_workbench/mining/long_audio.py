@@ -4,9 +4,9 @@ This module provides memory-efficient processing of long audio files (hours)
 for wake word detection using sliding window inference.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 import librosa
 import numpy as np
@@ -223,7 +223,6 @@ def _process_in_chunks(
         List of WindowPrediction objects
     """
     predictions = []
-    chunk_samples = int(chunk_duration * sample_rate)
     overlap_samples = window_size  # Overlap by window size to handle boundaries
 
     # Process chunks

@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import librosa
-import numpy as np
 import soundfile as sf
 
 from .long_audio import WindowPrediction

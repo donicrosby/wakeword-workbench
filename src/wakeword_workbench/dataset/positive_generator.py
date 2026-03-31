@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 from wakeword_workbench.config import Config
 from wakeword_workbench.logging_config import get_logger
@@ -15,7 +15,6 @@ from wakeword_workbench.tts.base import TTSError
 from wakeword_workbench.tts.registry import get_backend
 
 from .phrase_variants import generate_variants
-
 
 log = get_logger(__name__)
 
@@ -140,7 +139,7 @@ class PositiveGenerator:
                     continue
 
                 # Generate samples for this combination
-                for sample_idx in range(samples_per_combination):
+                for _sample_idx in range(samples_per_combination):
                     if generated_count >= total_needed:
                         break
 

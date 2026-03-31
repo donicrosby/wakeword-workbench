@@ -7,8 +7,8 @@ from pathlib import Path
 import librosa
 import numpy as np
 
-from wakeword_workbench.dataset.metadata import Manifest
 from wakeword_workbench.augment.audio_loader import load_audio
+from wakeword_workbench.dataset.metadata import Manifest
 
 
 class MicroWakeWordExportError(Exception):

@@ -7,7 +7,7 @@ config-based pipeline loading, and common preset pipelines.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Protocol, Union, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -137,7 +137,7 @@ def _get_transform_class(name: str) -> type:
     return _TRANSFORM_REGISTRY[name]
 
 
-def from_config(config: Union[dict[str, Any], str, Path]) -> Compose:
+def from_config(config: dict[str, Any] | str | Path) -> Compose:
     """Create a Compose pipeline from a configuration dict or file.
 
     Config format:
@@ -209,11 +209,11 @@ def from_config(config: Union[dict[str, Any], str, Path]) -> Compose:
                     _TRANSFORM_REGISTRY[transform_type] = transform_cls
                 else:
                     raise
-            except (ImportError, AttributeError):
+            except (ImportError, AttributeError) as err:
                 raise ValueError(
                     f"Unknown transform type: {transform_type!r} at index {i}. "
                     f"Available: {list(_TRANSFORM_REGISTRY.keys())}"
-                )
+                ) from err
 
         try:
             transforms.append(transform_cls(**kwargs))

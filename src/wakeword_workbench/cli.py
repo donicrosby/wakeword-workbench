@@ -14,7 +14,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from wakeword_workbench import __version__
 from wakeword_workbench.config import ConfigError, load_config
 from wakeword_workbench.logging_config import configure_logging, get_logger
-from wakeword_workbench.tts.cache import TTSCache, DEFAULT_CACHE_DIR
+from wakeword_workbench.tts.cache import TTSCache
 
 # Exit codes
 EXIT_SUCCESS = 0
@@ -132,7 +132,7 @@ def validate_command(
         console.print(f"[bold]TTS backend:[/bold] {config.tts.backend}")
     except ConfigError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
-        raise typer.Exit(code=EXIT_CONFIG_ERROR)
+        raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
 
     console.print("[bold green]✓[/bold green] Config validation passed")
     raise typer.Exit(code=EXIT_SUCCESS)
@@ -162,7 +162,7 @@ def cache_clear_command(
         console.print("[yellow]Cache is already empty.[/yellow]")
         raise typer.Exit(code=EXIT_SUCCESS)
 
-    console.print(f"[bold]TTS Cache[/bold]")
+    console.print("[bold]TTS Cache[/bold]")
     console.print(f"  Entries : {stats['num_entries']}")
     console.print(f"  Size    : {stats['size_mb']:.2f} MB")
     console.print(f"  Location: {cache._cache_dir}")

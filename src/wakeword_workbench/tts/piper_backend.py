@@ -76,7 +76,7 @@ class PiperBackend(TTSBackend):
             )
 
         self.use_cuda = use_cuda
-        self._voice: "PiperVoice" | None = None  # type: ignore[name-defined]
+        self._voice: PiperVoice | None = None  # type: ignore[name-defined]
 
         # Resolve model_path: use provided path or download default
         if model_path is None:

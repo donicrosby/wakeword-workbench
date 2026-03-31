@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from .metadata import Manifest
 
 if TYPE_CHECKING:
-    from .metadata import ManifestEntry
+    pass
 
 
 class SplitterError(Exception):
@@ -153,8 +153,6 @@ def _stratified_split(
 
     target_train_entries = int(total_entries * train)
     target_val_entries = int(total_entries * val)
-    target_test_entries = total_entries - target_train_entries - target_val_entries
-
     # Separate groups by their label composition
     all_positive = [g for g in groups if g.positive_count > 0 and g.negative_count == 0]
     all_negative = [g for g in groups if g.negative_count > 0 and g.positive_count == 0]

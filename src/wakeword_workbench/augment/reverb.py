@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
-import soundfile as sf
 import scipy.signal
+import soundfile as sf
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,7 @@ class RIRCache:
         self._max_size = max_size
         self._access_order: list[Path] = []
 
-    def get(self, path: Path) -> Optional[np.ndarray]:
+    def get(self, path: Path) -> np.ndarray | None:
         """Get cached RIR or None if not cached."""
         result = self._cache.get(path)
         if result is not None and path in self._access_order:

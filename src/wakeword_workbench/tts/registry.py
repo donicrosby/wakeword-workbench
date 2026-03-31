@@ -6,7 +6,6 @@ import importlib
 
 from .base import BackendNotAvailableError, TTSBackend, TTSError
 
-
 # Internal registry mapping backend name to backend class
 _BACKENDS: dict[str, type[TTSBackend]] = {}
 

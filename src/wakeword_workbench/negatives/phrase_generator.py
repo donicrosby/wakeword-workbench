@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import random
 import string
-from typing import Protocol, Sequence
+from collections.abc import Sequence
+from typing import Protocol
 
 try:
     import jellyfish
@@ -554,7 +555,7 @@ def generate_confusions(
     result: list[str] = []
     seen: set[str] = set()
 
-    for phrase, score in scored_confusions:
+    for phrase, _score in scored_confusions:
         if phrase not in seen:
             result.append(phrase)
             seen.add(phrase)

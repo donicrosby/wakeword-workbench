@@ -6,7 +6,6 @@ import json
 import shutil
 import time
 from collections import OrderedDict
-from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -84,7 +83,7 @@ class TTSCache:
         try:
             audio = np.load(str(audio_path), mmap_mode="r")
             audio = audio.astype(np.float32)
-            with open(meta_path, "r", encoding="utf-8") as f:
+            with open(meta_path, encoding="utf-8") as f:
                 meta = json.load(f)
 
             result = TTSResult(
@@ -175,7 +174,7 @@ class TTSCache:
                 audio_file = meta_file.with_suffix(".npy")
                 if audio_file.exists():
                     total_size += audio_file.stat().st_size
-                with open(meta_file, "r", encoding="utf-8") as f:
+                with open(meta_file, encoding="utf-8") as f:
                     meta = json.load(f)
                 cached_at_list.append(meta.get("cached_at", 0))
             except Exception:
@@ -272,7 +271,7 @@ class TTSCache:
         index_path = self._cache_dir / ".lru_index.json"
         if index_path.exists():
             try:
-                with open(index_path, "r", encoding="utf-8") as f:
+                with open(index_path, encoding="utf-8") as f:
                     data = json.load(f)
                 self._lru = OrderedDict(
                     (k, data[k]) for k in sorted(data, key=data.__getitem__) if k

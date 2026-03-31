@@ -231,7 +231,7 @@ def validate_export(output_dir: Path | str, split: str = "train") -> dict[str, n
 
     # Validate labels
     unique_labels = np.unique(y)
-    if not all(l in (0, 1) for l in unique_labels):
+    if not all(label in (0, 1) for label in unique_labels):
         raise OpenWakeWordExportError(f"Labels must be 0 or 1, got unique values: {unique_labels}")
 
     return {"X": X, "y": y}

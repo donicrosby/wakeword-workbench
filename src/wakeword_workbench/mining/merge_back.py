@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from wakeword_workbench.dataset.metadata import Manifest, ManifestEntry, ManifestError
@@ -19,7 +19,7 @@ class MergeResult:
     total_count: int
     backup_path: Path | None
     errors: list[str] = field(default_factory=list)
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class MergeBackError(Exception):
@@ -151,7 +151,7 @@ def add_to_training(
 
     # Create backup if requested
     if backup:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         backup_filename = f"training_manifest.{timestamp}.backup.jsonl"
         backup_path = training_path.parent / backup_filename
 

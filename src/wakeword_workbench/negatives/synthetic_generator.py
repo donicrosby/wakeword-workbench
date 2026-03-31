@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from wakeword_workbench.logging_config import get_logger
 
 if TYPE_CHECKING:
-    from typing import Callable
+    pass
 
 
 log = get_logger(__name__)

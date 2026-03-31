@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -12,7 +11,7 @@ try:
     import matplotlib
 
     matplotlib.use("Agg")  # Non-interactive backend
-    import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt  # noqa: F401
 
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
@@ -112,7 +111,7 @@ def plot_roc(
     output_path: str | Path | None = None,
     show_plot: bool = False,
     figsize: tuple[float, float] = (8, 6),
-) -> Optional[Path]:
+) -> Path | None:
     """Plot ROC curve (FAR vs FRR).
 
     Creates a DET curve-style plot with FAR on x-axis and FRR on y-axis.

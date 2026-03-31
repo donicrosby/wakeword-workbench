@@ -1,0 +1,49 @@
+# Hard Negative Mining Configuration
+# This example shows how to configure hard negative mining pipeline
+
+wake_word: "hey vera"
+
+samples:
+  positives: 100
+  negatives_multiplier: 5
+
+tts:
+  backend: "kokoro"
+  voices:
+    - "af_sarah"
+    - "am_adam"
+  speed: 1.0
+
+augmentation:
+  noise_snr: [-10, 10]
+  reverb_probability: 0.5
+  gain_range: [-45, 0]
+
+output:
+  path: "./output/mining_example"
+  format: ["microwakeword"]
+
+# Note: Hard negative mining is typically done as a separate step
+# after initial model training. The workflow is:
+#
+# 1. Generate initial dataset (run this config)
+# 2. Train initial wake word model
+# 3. Run long audio through model to find false positives
+# 4. Extract false positives as hard negatives
+# 5. Merge hard negatives back into training set
+# 6. Retrain model with augmented dataset
+#
+# Example mining commands (run after initial training):
+#
+# # Process long audio for false positives
+# wakeword-workbench mine \
+#   --model ./models/wakeword_v1.onnx \
+#   --audio ./data/long_recordings/*.wav \
+#   --threshold 0.7 \
+#   --output ./mined_negatives/
+#
+# # Merge mined negatives back to training set
+# wakeword-workbench merge \
+#   --source ./mined_negatives/manifest.jsonl \
+#   --target ./output/mining_example/train_manifest.jsonl \
+#   --backup

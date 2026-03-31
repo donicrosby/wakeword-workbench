@@ -1,0 +1,24 @@
+# Basic Wake Word Dataset Configuration
+# This is a minimal example for generating a simple wake word dataset
+
+wake_word: "hey vera"
+
+samples:
+  positives: 100
+  negatives_multiplier: 5  # Generate 500 negative samples
+
+tts:
+  backend: "kokoro"
+  voices:
+    - "af_sarah"
+    - "am_adam"
+  speed: 1.0
+
+augmentation:
+  noise_snr: [-10, 10]
+  reverb_probability: 0.5
+  gain_range: [-45, 0]
+
+output:
+  path: "./output/basic_dataset"
+  format: ["microwakeword"]

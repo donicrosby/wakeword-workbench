@@ -1,0 +1,36 @@
+# Augmented Wake Word Dataset Configuration
+# This example includes heavy augmentation for robust training
+
+wake_word: "hey assistant"
+
+samples:
+  positives: 500
+  negatives_multiplier: 10  # Generate 5000 negative samples
+
+tts:
+  backend: "kokoro"
+  voices:
+    - "af_sarah"
+    - "af_nicole"
+    - "am_adam"
+    - "am_michael"
+  speed: 0.9  # Slightly slower for clarity
+
+augmentation:
+  # Add background noise at various SNR levels
+  noise_snr: [-15, -5]
+  
+  # Reverb for room simulation
+  reverb_probability: 0.7
+  
+  # Gain variations
+  gain_range: [-50, -5]
+  
+  # Padding for fixed-length clips
+  padding:
+    target_duration_ms: 1500
+    jitter_ms: 100
+
+output:
+  path: "./output/augmented_dataset"
+  format: ["microwakeword", "openwakeword"]

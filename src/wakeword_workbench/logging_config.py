@@ -245,9 +245,7 @@ def configure_logging(
         processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(numeric_level),
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(
-            file=sys.stderr if console_only else sys.stdout
-        ),
+        logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=False,
     )
 

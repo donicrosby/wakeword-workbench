@@ -1713,7 +1713,7 @@ Wave FINAL (Verification - after ALL):
 
 ## Final Verification Wave
 
-- [ ] **F1. Plan Compliance Audit (oracle)**
+- [x] **F1. Plan Compliance Audit (oracle)**
 
   **What to do**:
   - Librarian agent reviews all features against plan
@@ -1736,7 +1736,7 @@ Wave FINAL (Verification - after ALL):
     Evidence: .sisyphus/evidence/f1-compliance.md
   ```
 
-- [ ] **F2. Code Quality Review (unspecified-high)**
+- [x] **F2. Code Quality Review (unspecified-high)**
 
   **What to do**:
   - Run ruff check
@@ -1760,7 +1760,7 @@ Wave FINAL (Verification - after ALL):
     Evidence: .sisyphus/evidence/f2-quality.log
   ```
 
-- [ ] **F3. End-to-End Pipeline Test (unspecified-high)**
+- [x] **F3. End-to-End Pipeline Test (unspecified-high)**
 
   **What to do**:
   - Run complete pipeline with small dataset
@@ -1783,7 +1783,7 @@ Wave FINAL (Verification - after ALL):
     Evidence: .sisyphus/evidence/f3-e2e/
   ```
 
-- [ ] **F4. Scope Fidelity Check (deep)**
+- [x] **F4. Scope Fidelity Check (deep)**
 
   **What to do**:
   - Review against original scope

@@ -1,0 +1,172 @@
+================================================================================
+WAKEWORD-WORKBENCH CODE QUALITY REVIEW REPORT
+Task: F2 - Code Quality Review
+Generated: 2026-03-30
+================================================================================
+
+TOOL VERSIONS
+--------------------------------------------------------------------------------
+- ruff: 0.15.8
+- mypy: 1.19.1 (compiled: yes)
+- pytest: 9.0.2
+- coverage: 7.13.5
+
+================================================================================
+1. RUFF LINTING RESULTS
+================================================================================
+
+COMMAND: uv run ruff check src/
+
+SUMMARY:
+- Total Errors Found: 39
+- Fixable Errors: 27 (with --fix option)
+- Hidden Fixes: 5 (with --unsafe-fixes option)
+
+ERROR BREAKDOWN BY TYPE:
+- F401 (unused imports): 7 errors
+- I001 (import sorting): 4 errors  
+- UP007/UP045/UP017/UP015/UP035/UP037 (upgrade rules): 10 errors
+- B904/B007/B028 (bugbear rules): 5 errors
+- F541 (f-string without placeholders): 1 error
+- F811 (redefinition): 1 error
+- F841 (unused variable): 2 errors
+- E741 (ambiguous variable name): 1 error
+- DTZ005 (datetime without timezone): 2 errors
+
+FILES WITH ERRORS:
+- src/wakeword_workbench/augment/noise.py: 1 error (F401)
+- src/wakeword_workbench/augment/pipeline.py: 2 errors (UP007, B904)
+- src/wakeword_workbench/augment/reverb.py: 2 errors (I001, UP045)
+- src/wakeword_workbench/cli.py: 3 errors (I001, F401, B904, F541)
+- src/wakeword_workbench/dataset/merger.py: 3 errors (F401, F401, F811)
+- src/wakeword_workbench/dataset/metadata.py: 1 error (UP035)
+- src/wakeword_workbench/dataset/positive_generator.py: 2 errors (I001, B007)
+- src/wakeword_workbench/dataset/splitter.py: 2 errors (F401, F841)
+- src/wakeword_workbench/eval/report.py: 1 error (UP017)
+- src/wakeword_workbench/eval/roc.py: 3 errors (F401, UP045, I001)
+- src/wakeword_workbench/export/microwakeword.py: 1 error (I001)
+- src/wakeword_workbench/export/openwakeword.py: 1 error (E741)
+- src/wakeword_workbench/logging_config.py: 2 errors (UP017, B028)
+- src/wakeword_workbench/mining/extractor.py: 1 error (F401)
+- src/wakeword_workbench/mining/long_audio.py: 2 errors (UP035, F841)
+- src/wakeword_workbench/mining/merge_back.py: 2 errors (DTZ005, DTZ005)
+- src/wakeword_workbench/negatives/phrase_generator.py: 2 errors (UP035, B007)
+- src/wakeword_workbench/negatives/synthetic_generator.py: 2 errors (UP035, F401)
+- src/wakeword_workbench/tts/cache.py: 4 errors (F401, UP015, UP015, UP015)
+- src/wakeword_workbench/tts/piper_backend.py: 1 error (UP037)
+- src/wakeword_workbench/tts/registry.py: 1 error (I001)
+
+RUFF VERDICT: FAIL (39 errors)
+
+================================================================================
+2. MYPY TYPE CHECKING RESULTS
+================================================================================
+
+COMMAND: uv run mypy src/wakeword_workbench
+
+SUMMARY:
+- Total Errors Found: 30
+- Files with Errors: 15
+- Source Files Checked: 41
+
+ERROR BREAKDOWN BY TYPE:
+- import-untyped (missing stubs): 7 errors
+- import-not-found (missing packages): 4 errors
+- no-any-return: 6 errors
+- assignment (type mismatch): 2 errors
+- attr-defined: 1 error
+- arg-type: 1 error
+
+FILES WITH ERRORS:
+- src/wakeword_workbench/config.py: 1 error (yaml stubs)
+- src/wakeword_workbench/logging_config.py: 2 errors (return types)
+- src/wakeword_workbench/eval/roc.py: 2 errors (matplotlib)
+- src/wakeword_workbench/augment/reverb.py: 4 errors (soundfile, scipy)
+- src/wakeword_workbench/augment/gain.py: 1 error (return type)
+- src/wakeword_workbench/tts/piper_backend.py: 3 errors (soundfile, piper, scipy)
+- src/wakeword_workbench/tts/kokoro_backend.py: 1 error (pykokoro)
+- src/wakeword_workbench/dataset/positive_generator.py: 1 error (soundfile)
+- src/wakeword_workbench/augment/noise.py: 4 errors (return types, scipy)
+- src/wakeword_workbench/augment/audio_loader.py: 2 errors (soundfile, arg-type)
+- src/wakeword_workbench/mining/extractor.py: 1 error (soundfile)
+- src/wakeword_workbench/augment/pipeline.py: 1 error (yaml stubs)
+- src/wakeword_workbench/export/openwakeword.py: 1 error (return type)
+- src/wakeword_workbench/export/microwakeword.py: 1 error (return type)
+- src/wakeword_workbench/eval/report.py: 3 errors (type assignments)
+
+NOTE: Many errors are due to missing type stubs for external libraries
+(soundfile, scipy, yaml, matplotlib, piper, pykokoro).
+
+MYPY VERDICT: FAIL (30 errors)
+
+================================================================================
+3. PYTEST WITH COVERAGE RESULTS
+================================================================================
+
+COMMAND: uv run pytest --cov=wakeword_workbench --cov-report=term-missing
+
+TEST RESULTS:
+- Total Tests Collected: 536
+- Tests Passed: 503
+- Tests Failed: 33
+- Warnings: 5
+
+COVERAGE SUMMARY:
+- Total Lines: 3132
+- Missed Lines: 915
+- Coverage Percentage: 71%
+
+COVERAGE BY MODULE (below 80%):
+- src/wakeword_workbench/dataset/positive_generator.py: 19% (143/174 lines)
+- src/wakeword_workbench/negatives/synthetic_generator.py: 49% (52/106 lines)
+- src/wakeword_workbench/mining/extractor.py: 0% (58/58 lines)
+- src/wakeword_workbench/mining/long_audio.py: 0% (97/97 lines)
+- src/wakeword_workbench/mining/merge_back.py: 0% (93/93 lines)
+- src/wakeword_workbench/mining/__init__.py: 0% (4/4 lines)
+
+FAILED TESTS:
+1. tests/test_gain.py::TestGainTransition::test_gain_applied
+2. tests/test_positive_generator.py::TestPositiveGenerator::test_init_creates_output_directory
+3. tests/test_positive_generator.py::TestPositiveGenerator::test_init_stores_config
+4. tests/test_positive_generator.py::TestPositiveGenerator::test_generate_raises_on_invalid_count
+5. tests/test_positive_generator.py::TestPositiveGenerator::test_generate_success
+6. tests/test_positive_generator.py::TestPositiveGenerator::test_generate_handles_tts_error
+7. tests/test_positive_generator.py::TestPositiveGenerator::test_generate_returns_correct_manifest_path
+8. tests/test_positive_generator.py::TestPositiveGenerator::test_generate_falls_back_on_no_variants
+9. tests/test_positive_generator.py::TestPositiveGenerator::test_generate_raises_on_backend_failure
+10. tests/test_positive_generator.py::TestPositiveGenerator::test_wav_files_are_16khz_mono
+11-33. tests/test_synthetic_generator.py (23 tests failed)
+
+PYTEST COVERAGE VERDICT: FAIL (71% coverage, below 80% threshold)
+
+================================================================================
+4. FINAL VERDICT
+================================================================================
+
+OVERALL STATUS: FAIL
+
+CRITERIA CHECK:
+[✗] ruff check src/ - 39 errors found (required: 0)
+[✗] mypy src/wakeword_workbench - 30 errors found (required: 0)
+[✗] pytest coverage >= 80% - 71% achieved (required: >=80%)
+
+SUMMARY OF ISSUES:
+1. Ruff linting found 39 code style violations (27 auto-fixable)
+2. MyPy found 30 type errors (many due to missing library stubs)
+3. Test coverage is 71%, 9 percentage points below the 80% threshold
+4. 33 tests are failing, primarily in:
+   - test_positive_generator.py (9 failures)
+   - test_synthetic_generator.py (23 failures)
+   - test_gain.py (1 failure)
+
+RECOMMENDATIONS:
+1. Run `uv run ruff check src/ --fix` to auto-fix 27 style issues
+2. Install missing type stubs: scipy-stubs, types-PyYAML
+3. Address import ordering in multiple files
+4. Fix failing tests in positive_generator and synthetic_generator modules
+5. Add tests for mining module (currently 0% coverage)
+6. Improve coverage on dataset/positive_generator.py (19% coverage)
+
+================================================================================
+END OF REPORT
+================================================================================

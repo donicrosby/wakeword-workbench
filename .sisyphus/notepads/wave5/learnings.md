@@ -1,0 +1,11 @@
+## Task 23: Dataset Merger (Wave 5)
+- merge() function: combines positive and negative manifests with ratio-based balancing
+- Ratio: neg/pos ratio (1.0 = equal, 2.0 = 2x negatives, None = all)
+- Uses warnings.warn() for ratio warnings (not returned in return value)
+- merge_with_result() returns MergeResult dataclass with warnings list for testing
+- Path collision detection via set intersection of positive and negative paths
+- Deterministic shuffle via random.Random(seed).shuffle()
+- _sample_entries uses random.sample for deterministic downsampling
+- validate_files parameter (off by default) checks Path.exists() for each entry
+- No imports at module level (TYPE_CHECKING guard for Manifest type)
+- Test approach: use merge_with_result() to get warnings as data, avoid warnings.catch_warnings() complexity

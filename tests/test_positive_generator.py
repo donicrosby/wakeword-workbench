@@ -9,6 +9,11 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+# Import real_soundfile_write before any patches are applied
+import soundfile as _real_sf_module
+
+_real_write = _real_sf_module.write
+
 from wakeword_workbench.config import (
     Config,
     SamplesConfig,
@@ -84,12 +89,14 @@ class TestPositiveGenerator:
         with pytest.raises(PositiveGeneratorError, match="count must be positive"):
             generator.generate(-1)
 
+    @patch("soundfile.write")
     @patch("wakeword_workbench.dataset.positive_generator.get_backend")
     @patch("wakeword_workbench.dataset.positive_generator.generate_variants")
     def test_generate_success(
         self,
         mock_generate_variants: MagicMock,
         mock_get_backend: MagicMock,
+        mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
         mock_tts_result: TTSResult,
@@ -101,6 +108,12 @@ class TestPositiveGenerator:
         mock_backend.synthesize.return_value = mock_tts_result
         mock_backend.set_voice.return_value = None
         mock_get_backend.return_value = mock_backend
+
+        # Make sf.write actually write files
+        def real_write(path, audio, sr):
+            _real_write(path, audio, sr)
+
+        mock_sf_write.side_effect = real_write
 
         # Generate samples
         manifest_path = PositiveGenerator(mock_config, output_dir).generate(4)
@@ -135,12 +148,14 @@ class TestPositiveGenerator:
         for wav_file in wav_files:
             assert wav_file.stem.startswith("hey_vera_")
 
+    @patch("soundfile.write")
     @patch("wakeword_workbench.dataset.positive_generator.get_backend")
     @patch("wakeword_workbench.dataset.positive_generator.generate_variants")
     def test_generate_handles_tts_error(
         self,
         mock_generate_variants: MagicMock,
         mock_get_backend: MagicMock,
+        mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
     ) -> None:
@@ -183,12 +198,14 @@ class TestPositiveGenerator:
         # Should have fewer entries due to one failure
         assert len(entries) <= 3
 
+    @patch("soundfile.write")
     @patch("wakeword_workbench.dataset.positive_generator.get_backend")
     @patch("wakeword_workbench.dataset.positive_generator.generate_variants")
     def test_generate_returns_correct_manifest_path(
         self,
         mock_generate_variants: MagicMock,
         mock_get_backend: MagicMock,
+        mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
         mock_tts_result: TTSResult,
@@ -205,12 +222,14 @@ class TestPositiveGenerator:
 
         assert manifest_path == output_dir / "positive_manifest.jsonl"
 
+    @patch("soundfile.write")
     @patch("wakeword_workbench.dataset.positive_generator.get_backend")
     @patch("wakeword_workbench.dataset.positive_generator.generate_variants")
     def test_generate_falls_back_on_no_variants(
         self,
         mock_generate_variants: MagicMock,
         mock_get_backend: MagicMock,
+        mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
         mock_tts_result: TTSResult,
@@ -238,12 +257,14 @@ class TestPositiveGenerator:
             with pytest.raises(PositiveGeneratorError, match="Failed to get TTS backend"):
                 generator.generate(1)
 
+    @patch("soundfile.write")
     @patch("wakeword_workbench.dataset.positive_generator.get_backend")
     @patch("wakeword_workbench.dataset.positive_generator.generate_variants")
     def test_wav_files_are_16khz_mono(
         self,
         mock_generate_variants: MagicMock,
         mock_get_backend: MagicMock,
+        mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
     ) -> None:
@@ -274,6 +295,19 @@ class TestPositiveGenerator:
         mock_backend.synthesize.return_value = stereo_result
         mock_backend.set_voice.return_value = None
         mock_get_backend.return_value = mock_backend
+
+        # Make sf.write actually write files so we can read them back
+        def real_write(path, audio, sr):
+            # Convert stereo to mono and resample to 16kHz like the source does
+            if audio.ndim > 1:
+                audio = audio.mean(axis=1)
+            if sr != 16000:
+                import librosa
+
+                audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
+            _real_write(path, audio.astype(np.float32), 16000)
+
+        mock_sf_write.side_effect = real_write
 
         # Generate sample
         manifest_path = PositiveGenerator(mock_config, output_dir).generate(1)

@@ -7,8 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from wakeword_workbench.logging_config import get_logger
+
 if TYPE_CHECKING:
     from .metadata import Manifest
+
+log = get_logger(__name__)
 
 
 class MergerError(Exception):
@@ -90,6 +94,8 @@ def merge(
         >>> len(combined)
         2
     """
+    log.debug("merge_start", pos_count=len(pos_manifest), neg_count=len(neg_manifest), ratio=ratio)
+
     # Extract entries from each manifest
     pos_entries = list(pos_manifest)
     neg_entries = list(neg_manifest)
@@ -108,13 +114,21 @@ def merge(
         balanced_pos, balanced_neg, warn = _balance_by_ratio(pos_entries, neg_entries, ratio)
         warnings_list.extend(warn)
         entries = balanced_pos + balanced_neg
+        log.debug(
+            "ratio_balancing_applied",
+            target_ratio=ratio,
+            pos_kept=len(balanced_pos),
+            neg_kept=len(balanced_neg),
+        )
     else:
         entries = pos_entries + neg_entries
+        log.debug("no_ratio_balancing", total_entries=len(entries))
 
     # Deterministic shuffle
     if seed is not None:
         rng = random.Random(seed)
         rng.shuffle(entries)
+        log.debug("shuffling_with_seed", seed=seed)
 
     # File existence validation (optional, off by default)
     if validate_files:
@@ -122,7 +136,9 @@ def merge(
         if file_errors:
             raise MergerValidationError(file_errors)
 
-    return _create_manifest_from_entries(entries)
+    result = _create_manifest_from_entries(entries)
+    log.info("merge_complete", total_entries=len(result))
+    return result
 
 
 def merge_with_result(
@@ -147,6 +163,13 @@ def merge_with_result(
     Raises:
         Same exceptions as merge().
     """
+    log.debug(
+        "merge_with_result_start",
+        pos_count=len(pos_manifest),
+        neg_count=len(neg_manifest),
+        ratio=ratio,
+    )
+
     pos_entries = list(pos_manifest)
     neg_entries = list(neg_manifest)
 
@@ -183,6 +206,16 @@ def merge_with_result(
     total = len(entries)
     actual_ratio = actual_neg / actual_pos if actual_pos > 0 else 0.0
 
+    log.info(
+        "merge_with_result_complete",
+        total_entries=total,
+        positive_count=actual_pos,
+        negative_count=actual_neg,
+        target_ratio=ratio,
+        actual_ratio=round(actual_ratio, 2),
+        warnings_count=len(warnings_list),
+    )
+
     return MergeResult(
         manifest=manifest,
         total_entries=total,
@@ -215,6 +248,7 @@ def _balance_by_ratio(
 
     if num_pos == 0:
         warnings.append("No positive entries found, cannot apply ratio balancing")
+        log.warning("ratio_balancing_no_positives")
         return [], neg_entries[:], warnings
 
     target_neg = int(num_pos * ratio)
@@ -224,17 +258,23 @@ def _balance_by_ratio(
         # Have enough negatives - sample to target
         balanced_neg = _sample_entries(neg_entries, target_neg)
         if num_neg > target_neg:
-            warnings.append(
-                f"Using {target_neg}/{num_neg} negatives to match ratio {ratio}. "
-                f"Consider generating more negatives."
+            msg = f"Using {target_neg}/{num_neg} negatives to match ratio {ratio}. Consider generating more negatives."
+            warnings.append(msg)
+            log.warning(
+                "ratio_balancing_undersample", target_neg=target_neg, available=num_neg, ratio=ratio
             )
     else:
         # Not enough negatives - use all and warn
         balanced_neg = list(neg_entries)
-        warnings.append(
-            f"Not enough negatives ({num_neg}) for ratio {ratio} "
-            f"(need {target_neg}). Using all {num_neg} available negatives. "
-            f"Actual ratio: {num_neg / num_pos:.2f}"
+        actual = num_neg / num_pos if num_pos > 0 else 0
+        msg = f"Not enough negatives ({num_neg}) for ratio {ratio} (need {target_neg}). Using all {num_neg} available negatives. Actual ratio: {actual:.2f}"
+        warnings.append(msg)
+        log.warning(
+            "ratio_balancing_insufficient_negatives",
+            available=num_neg,
+            target=target_neg,
+            ratio=ratio,
+            actual_ratio=round(actual, 2),
         )
 
     return list(pos_entries), balanced_neg, warnings

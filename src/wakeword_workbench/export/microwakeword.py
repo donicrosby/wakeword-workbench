@@ -9,6 +9,9 @@ import numpy as np
 
 from wakeword_workbench.augment.audio_loader import load_audio
 from wakeword_workbench.dataset.metadata import Manifest
+from wakeword_workbench.logging_config import get_logger
+
+log = get_logger(__name__)
 
 
 class MicroWakeWordExportError(Exception):
@@ -73,6 +76,13 @@ def export_to_mmap(
     Raises:
         MicroWakeWordExportError: If export fails.
     """
+    log.info(
+        "microwakeword_mmap_export_start",
+        split=split,
+        entry_count=len(manifest),
+        output_dir=str(output_dir),
+    )
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -83,6 +93,7 @@ def export_to_mmap(
     entries = list(manifest)
     if len(entries) == 0:
         # Create empty files for empty manifest
+        log.warning("microwakeword_mmap_empty_manifest")
         _write_empty_files(data_path, indices_path, labels_path)
         return {
             "data": data_path,
@@ -144,6 +155,14 @@ def export_to_mmap(
     except OSError as e:
         raise MicroWakeWordExportError(f"Failed to write labels file: {e}") from e
 
+    log.info(
+        "microwakeword_mmap_export_complete",
+        split=split,
+        clip_count=len(audio_clips),
+        total_samples=len(concatenated_audio),
+        output_dir=str(output_dir),
+    )
+
     return {
         "data": data_path,
         "indices": indices_path,
@@ -182,6 +201,15 @@ def export_with_features(
     Raises:
         MicroWakeWordExportError: If export fails.
     """
+    log.info(
+        "microwakeword_feature_export_start",
+        split=split,
+        entry_count=len(manifest),
+        output_dir=str(output_dir),
+        n_mels=n_mels,
+        hop_length=hop_length,
+    )
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -193,6 +221,7 @@ def export_with_features(
 
     entries = list(manifest)
     if len(entries) == 0:
+        log.warning("microwakeword_feature_empty_manifest")
         _write_empty_feature_files(data_path, indices_path, labels_path, durations_path, shape_path)
         return {
             "data": data_path,
@@ -264,6 +293,14 @@ def export_with_features(
     # Save shape metadata
     shape_array = np.array(concatenated_features.shape, dtype=np.int64)
     np.save(shape_path, shape_array)
+
+    log.info(
+        "microwakeword_feature_export_complete",
+        split=split,
+        clip_count=len(feature_clips),
+        feature_shape=concatenated_features.shape,
+        output_dir=str(output_dir),
+    )
 
     return {
         "data": data_path,

@@ -5,6 +5,10 @@ from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
 
+from wakeword_workbench.logging_config import get_logger
+
+log = get_logger(__name__)
+
 
 class AdjustGain:
     """Apply random gain (volume adjustment) to audio.

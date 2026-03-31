@@ -9,6 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from wakeword_workbench.dataset.metadata import Manifest, ManifestEntry, ManifestError
+from wakeword_workbench.logging_config import get_logger
+
+log = get_logger(__name__)
 
 
 @dataclass
@@ -49,6 +52,13 @@ def add_to_training(
     Raises:
         MergeBackError: If validation fails or operation cannot complete.
     """
+    log.info(
+        "merge_back_start",
+        new_negatives=str(new_negatives_manifest),
+        training_manifest=str(training_manifest),
+        backup=backup,
+    )
+
     errors: list[str] = []
     added_count = 0
     backup_path: Path | None = None
@@ -68,6 +78,8 @@ def add_to_training(
         training = Manifest.load(training_path)
     except ManifestError as e:
         raise MergeBackError(f"Failed to load training manifest: {e}") from e
+
+    log.debug("training_manifest_loaded", existing_entries=len(training))
 
     # Build set of existing paths for duplicate detection
     existing_paths: set[str] = {entry.path for entry in training}
@@ -134,6 +146,8 @@ def add_to_training(
     except OSError as e:
         raise MergeBackError(f"Failed to read new negatives manifest: {e}") from e
 
+    log.debug("new_negatives_parsed", valid_entries=len(new_entries), errors=len(errors))
+
     # Abort if validation produced errors that make merging unsafe
     # (missing files are warnings, not blockers)
     critical_errors = [e for e in errors if "Audio file not found" in e]
@@ -142,6 +156,7 @@ def add_to_training(
 
     # Abort if no valid entries to add
     if not new_entries:
+        log.warning("merge_back_no_entries", reason="no_valid_entries", errors=len(errors))
         return MergeResult(
             added_count=0,
             total_count=len(training),
@@ -158,6 +173,7 @@ def add_to_training(
         try:
             shutil.copy2(training_path, backup_path)
             backup_path = backup_path.resolve()
+            log.debug("backup_created", backup_path=str(backup_path))
         except OSError as e:
             raise MergeBackError(f"Failed to create backup: {e}") from e
 
@@ -173,6 +189,14 @@ def add_to_training(
         if backup and backup_path and backup_path.exists():
             shutil.copy2(backup_path, training_path)
         raise MergeBackError(f"Failed to save training manifest: {e}") from e
+
+    log.info(
+        "merge_back_complete",
+        added_count=added_count,
+        total_count=len(training),
+        backup_path=str(backup_path) if backup_path else None,
+        errors_count=len(errors),
+    )
 
     return MergeResult(
         added_count=added_count,

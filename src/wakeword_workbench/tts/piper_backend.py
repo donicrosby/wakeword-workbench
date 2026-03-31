@@ -16,6 +16,7 @@ from wakeword_workbench.tts.base import (
     TTSError,
     TTSResult,
 )
+from .cache import get_default_cache
 
 # Try to import piper, but allow graceful fallback
 try:
@@ -141,6 +142,14 @@ class PiperBackend(TTSBackend):
         if not text.strip():
             raise TTSError("Cannot synthesize empty text.")
 
+        # Check cache first
+        cache = get_default_cache()
+        cached_result = cache.get(
+            text, self.model_path.stem if self.model_path else "default", "piper", 1.0
+        )
+        if cached_result is not None:
+            return cached_result
+
         try:
             # Synthesize WAV audio
             wav_buffer = BytesIO()
@@ -166,11 +175,18 @@ class PiperBackend(TTSBackend):
             # Calculate duration
             duration = len(audio_data) / self._TARGET_SAMPLE_RATE
 
-            return TTSResult(
+            result = TTSResult(
                 audio=audio_data,
                 sample_rate=self._TARGET_SAMPLE_RATE,
                 duration=duration,
             )
+
+            # Store in cache
+            cache.put(
+                text, self.model_path.stem if self.model_path else "default", "piper", result, 1.0
+            )
+
+            return result
 
         except Exception as e:
             raise TTSError(f"Piper synthesis failed: {e}") from e

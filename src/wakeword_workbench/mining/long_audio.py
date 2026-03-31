@@ -11,6 +11,10 @@ from pathlib import Path
 import librosa
 import numpy as np
 
+from wakeword_workbench.logging_config import get_logger
+
+log = get_logger(__name__)
+
 
 @dataclass
 class WindowPrediction:
@@ -83,17 +87,29 @@ def process_long_audio(
     # Get audio file duration
     duration = librosa.get_duration(path=str(audio_path))
 
+    log.info(
+        "long_audio_processing_start",
+        audio_path=str(audio_path),
+        duration_seconds=round(duration, 2),
+        window_size=window_size,
+        hop_size=hop_size,
+        chunk_duration=chunk_duration,
+    )
+
     # Handle very short audio (process in one go)
     if duration <= chunk_duration:
+        log.debug("short_audio_single_pass", duration=round(duration, 2))
         audio, _ = librosa.load(
             str(audio_path),
             sr=sample_rate,
             mono=True,
         )
-        return _process_audio_array(model, audio, window_size, hop_size, sample_rate)
+        result = _process_audio_array(model, audio, window_size, hop_size, sample_rate)
+        log.info("long_audio_processing_complete", predictions=len(result))
+        return result
 
     # Process in chunks for memory efficiency
-    return _process_in_chunks(
+    result = _process_in_chunks(
         model,
         audio_path,
         window_size,
@@ -102,6 +118,8 @@ def process_long_audio(
         chunk_duration,
         duration,
     )
+    log.info("long_audio_processing_complete", predictions=len(result))
+    return result
 
 
 def _process_audio_array(
@@ -222,11 +240,18 @@ def _process_in_chunks(
     Returns:
         List of WindowPrediction objects
     """
+    log.debug(
+        "chunked_processing_start",
+        total_duration=round(total_duration, 2),
+        chunk_duration=chunk_duration,
+    )
+
     predictions = []
     overlap_samples = window_size  # Overlap by window size to handle boundaries
 
     # Process chunks
     offset = 0.0
+    chunk_count = 0
     while offset < total_duration:
         # Calculate chunk boundaries with overlap
         chunk_start = max(0.0, offset - (overlap_samples / sample_rate) if offset > 0 else 0.0)
@@ -286,6 +311,7 @@ def _process_in_chunks(
 
         # Move to next chunk
         offset += chunk_duration
+        chunk_count += 1
 
         # Safety check to prevent infinite loop
         if current_chunk_duration <= 0:
@@ -293,6 +319,12 @@ def _process_in_chunks(
 
     # Remove any duplicate predictions (can occur at chunk boundaries)
     predictions = _deduplicate_predictions(predictions)
+
+    log.debug(
+        "chunked_processing_complete",
+        chunks_processed=chunk_count,
+        total_predictions=len(predictions),
+    )
 
     return predictions
 

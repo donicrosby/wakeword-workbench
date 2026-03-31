@@ -12,6 +12,10 @@ from typing import Any, Protocol, runtime_checkable
 import numpy as np
 from numpy.typing import NDArray
 
+from wakeword_workbench.logging_config import get_logger
+
+log = get_logger(__name__)
+
 
 @runtime_checkable
 class Transform(Protocol):
@@ -178,6 +182,8 @@ def from_config(config: dict[str, Any] | str | Path) -> Compose:
         else:
             raise ValueError(f"Unsupported config format: {suffix}. Use .yaml, .yml, or .json")
 
+        log.debug("pipeline_config_loaded", path=str(config_path))
+
     if not isinstance(config, dict):
         raise ValueError("Config must be a dict")
 
@@ -219,6 +225,12 @@ def from_config(config: dict[str, Any] | str | Path) -> Compose:
             transforms.append(transform_cls(**kwargs))
         except TypeError as e:
             raise ValueError(f"Failed to instantiate {transform_type}: {e}") from e
+
+    log.info(
+        "pipeline_created",
+        transform_count=len(transforms),
+        transforms=[type(t).__name__ for t in transforms],
+    )
 
     return Compose(transforms)
 

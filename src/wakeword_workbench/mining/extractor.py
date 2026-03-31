@@ -10,7 +10,11 @@ from pathlib import Path
 import librosa
 import soundfile as sf
 
+from wakeword_workbench.logging_config import get_logger
+
 from .long_audio import WindowPrediction
+
+log = get_logger(__name__)
 
 
 @dataclass
@@ -73,6 +77,15 @@ def extract_false_positives(
         >>> for clip in clips:
         ...     print(f"Extracted: {clip.clip_path} @ {clip.timestamp}s")
     """
+    log.info(
+        "false_positive_extraction_start",
+        audio_path=str(audio_path),
+        output_dir=str(output_dir),
+        threshold=threshold,
+        cooldown_seconds=cooldown_seconds,
+        total_predictions=len(predictions),
+    )
+
     audio_path = Path(audio_path)
     output_dir = Path(output_dir)
 
@@ -92,7 +105,10 @@ def extract_false_positives(
     selected_predictions = _select_with_cooldown(predictions, threshold, cooldown_seconds)
 
     if not selected_predictions:
+        log.info("false_positive_extraction_no_clips", reason="no_predictions_above_threshold")
         return []
+
+    log.debug("predictions_selected", count=len(selected_predictions), threshold=threshold)
 
     # Load full audio for extraction
     audio, sr = librosa.load(
@@ -123,6 +139,12 @@ def extract_false_positives(
                 duration=duration,
             )
         )
+
+    log.info(
+        "false_positive_extraction_complete",
+        clips_extracted=len(extracted_clips),
+        output_dir=str(output_dir),
+    )
 
     return extracted_clips
 

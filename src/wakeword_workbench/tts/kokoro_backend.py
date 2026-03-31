@@ -16,6 +16,7 @@ except ImportError:
     KokoroPipeline = None  # type: ignore[assignment, misc]
 
 from .base import BackendNotAvailableError, TTSBackend, TTSError, TTSResult
+from .cache import get_default_cache
 
 # Kokoro generates at 24000 Hz, we need to resample to 16000 Hz
 _KOKORO_SAMPLE_RATE = 24000
@@ -100,6 +101,12 @@ class KokoroBackend(TTSBackend):
         if not text or not text.strip():
             raise TTSError("Cannot synthesize empty text")
 
+        # Check cache first
+        cache = get_default_cache()
+        cached_result = cache.get(text, self._voice, "kokoro", self._speed)
+        if cached_result is not None:
+            return cached_result
+
         try:
             # Generate audio using pykokoro
             audio_24k = self._pipeline.generate(text, voice=self._voice, speed=self._speed)  # type: ignore[union-attr]
@@ -131,11 +138,16 @@ class KokoroBackend(TTSBackend):
             # Calculate duration
             duration = len(audio_16k) / _TARGET_SAMPLE_RATE
 
-            return TTSResult(
+            result = TTSResult(
                 audio=audio_16k,
                 sample_rate=_TARGET_SAMPLE_RATE,
                 duration=duration,
             )
+
+            # Store in cache
+            cache.put(text, self._voice, "kokoro", result, self._speed)
+
+            return result
 
         except Exception as e:
             raise TTSError(f"Kokoro synthesis failed: {e}") from e

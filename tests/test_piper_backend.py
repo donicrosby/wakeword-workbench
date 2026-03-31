@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from wakeword_workbench.tts.base import BackendNotAvailableError, TTSError
+from wakeword_workbench.tts.base import BackendNotAvailableError, TTSError, TTSResult
+from wakeword_workbench.tts.cache import TTSCache, reset_default_cache
 
 
 class TestPiperBackendAvailability:
@@ -300,3 +301,87 @@ class TestPiperBackendTTSResultValidation:
         # Check duration matches
         expected_duration = len(result.audio) / 16000
         assert abs(result.duration - expected_duration) < 0.01
+
+
+class TestPiperBackendCaching:
+    """Test PiperBackend caching integration."""
+
+    @pytest.fixture
+    def mock_cache(self, tmp_path: Path) -> TTSCache:
+        """Create a fresh cache for testing."""
+        reset_default_cache()
+        return TTSCache(cache_dir=tmp_path / "tts_cache")
+
+    @pytest.fixture
+    def mock_piper_voice(self) -> MagicMock:
+        """Create a mock PiperVoice for testing."""
+        mock_voice = MagicMock()
+        return mock_voice
+
+    def test_synthesize_caches_result(
+        self,
+        tmp_path: Path,
+        mock_piper_voice: MagicMock,
+        mock_cache: TTSCache,
+    ) -> None:
+        """Test that synthesize stores result in cache after synthesis."""
+        import wakeword_workbench.tts.piper_backend as piper_module
+        import soundfile as sf
+
+        model_path = tmp_path / "test_model.onnx"
+        model_path.touch()
+
+        sample_audio = np.sin(np.linspace(0, 2 * np.pi, 22050)).astype(np.float32)
+        mock_piper_voice.synthesize_wav = MagicMock()
+
+        def mock_sf_read(file, dtype=None):
+            return sample_audio, 22050
+
+        piper_module._PIPER_AVAILABLE = True
+        with patch.object(piper_module, "PiperVoice", mock_piper_voice):
+            with patch.object(sf, "read", mock_sf_read):
+                with patch(
+                    "wakeword_workbench.tts.piper_backend.get_default_cache",
+                    return_value=mock_cache,
+                ):
+                    backend = piper_module.PiperBackend(model_path=str(model_path))
+                    result = backend.synthesize("hello world")
+
+                    cached = mock_cache.get("hello world", "test_model", "piper", 1.0)
+                    assert cached is not None
+                    np.testing.assert_array_equal(cached.audio, result.audio)
+
+    def test_synthesize_returns_cached_result(
+        self,
+        tmp_path: Path,
+        mock_piper_voice: MagicMock,
+        mock_cache: TTSCache,
+    ) -> None:
+        """Test that synthesize returns cached result without synthesis."""
+        import wakeword_workbench.tts.piper_backend as piper_module
+
+        model_path = tmp_path / "test_model.onnx"
+        model_path.touch()
+
+        # Pre-populate cache
+        cached_audio = np.zeros(16000, dtype=np.float32)
+        cached_result = TTSResult(
+            audio=cached_audio,
+            sample_rate=16000,
+            duration=1.0,
+        )
+        mock_cache.put("hello world", "test_model", "piper", cached_result, 1.0)
+
+        mock_piper_voice.synthesize_wav = MagicMock()
+        piper_module._PIPER_AVAILABLE = True
+        with patch.object(piper_module, "PiperVoice", mock_piper_voice):
+            with patch(
+                "wakeword_workbench.tts.piper_backend.get_default_cache", return_value=mock_cache
+            ):
+                backend = piper_module.PiperBackend(model_path=str(model_path))
+                result = backend.synthesize("hello world")
+
+                # Voice synthesis should NOT have been called
+                mock_piper_voice.synthesize_wav.assert_not_called()
+
+                np.testing.assert_array_equal(result.audio, cached_audio)

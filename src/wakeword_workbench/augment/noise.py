@@ -9,6 +9,10 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
+from wakeword_workbench.logging_config import get_logger
+
+log = get_logger(__name__)
+
 
 class AddNoise:
     """Add random noise files at specified SNR levels.
@@ -54,6 +58,14 @@ class AddNoise:
 
         if not self._noise_files:
             raise ValueError(f"No noise files found in {self.noise_dir}")
+
+        log.debug(
+            "noise_files_loaded",
+            noise_dir=str(self.noise_dir),
+            file_count=len(self._noise_files),
+            snr_range=self.snr_range,
+            probability=self.p,
+        )
 
     @staticmethod
     def _compute_signal_power(audio: NDArray[np.floating]) -> float:
@@ -181,6 +193,13 @@ class AddColoredNoise:
         self.color = color
         self.snr_range = snr_range
         self.p = p
+
+        log.debug(
+            "colored_noise_init",
+            color=color,
+            snr_range=snr_range,
+            probability=p,
+        )
 
     def _generate_white(self, length: int) -> NDArray[np.float32]:
         """Generate white noise (flat spectrum)."""

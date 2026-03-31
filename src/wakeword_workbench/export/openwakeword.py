@@ -19,6 +19,9 @@ import numpy as np
 from wakeword_workbench.augment.audio_loader import AudioLoadError, load_audio
 from wakeword_workbench.augment.padding import FixedSizeClip
 from wakeword_workbench.dataset.metadata import Manifest
+from wakeword_workbench.logging_config import get_logger
+
+log = get_logger(__name__)
 
 
 class OpenWakeWordExportError(Exception):
@@ -102,6 +105,15 @@ def export_to_numpy(
         >>> export_to_numpy(manifest, Path("output/"), split="train")
         (PosixPath('output/X_train.npy'), PosixPath('output/y_train.npy'))
     """
+    log.info(
+        "openwakeword_export_start",
+        split=split,
+        entry_count=len(manifest),
+        output_dir=str(output_dir),
+        format=format,
+        fixed_length=fixed_length,
+    )
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -190,6 +202,16 @@ def export_to_numpy(
         np.save(y_path, y)
     except OSError as e:
         raise OpenWakeWordExportError(f"Failed to save numpy files: {e}") from e
+
+    log.info(
+        "openwakeword_export_complete",
+        split=split,
+        x_path=str(X_path),
+        y_path=str(y_path),
+        shape=X.shape,
+        positive_count=sum(1 for l in labels if l == 1),
+        negative_count=sum(1 for l in labels if l == 0),
+    )
 
     return X_path, y_path
 

@@ -7,10 +7,14 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from wakeword_workbench.logging_config import get_logger
+
 from .metadata import Manifest
 
 if TYPE_CHECKING:
     pass
+
+log = get_logger(__name__)
 
 
 class SplitterError(Exception):
@@ -61,6 +65,16 @@ def split(
     Raises:
         SplitValidationError: If split ratios don't sum to 1.0 or validation fails.
     """
+    log.debug(
+        "split_start",
+        total_entries=len(manifest),
+        train_ratio=train,
+        val_ratio=val,
+        test_ratio=test,
+        by=by,
+        seed=seed,
+    )
+
     # Validate split ratios
     total = train + val + test
     if abs(total - 1.0) > 1e-9:
@@ -70,6 +84,7 @@ def split(
 
     # Handle empty manifest
     if len(manifest) == 0:
+        log.info("split_complete_empty_manifest")
         return Manifest(), Manifest(), Manifest()
 
     # Set random seed for reproducibility
@@ -78,6 +93,7 @@ def split(
 
     # Group entries by speaker
     speaker_groups = _group_by_speaker(manifest, by)
+    log.debug("speaker_groups_created", group_count=len(speaker_groups))
 
     # Stratify by label while maintaining speaker grouping
     train_groups, val_groups, test_groups = _stratified_split(speaker_groups, train, val, test)
@@ -89,6 +105,14 @@ def split(
 
     # Validate the split
     _validate_split(manifest, train_manifest, val_manifest, test_manifest, by)
+
+    log.info(
+        "split_complete",
+        total=len(manifest),
+        train_count=len(train_manifest),
+        val_count=len(val_manifest),
+        test_count=len(test_manifest),
+    )
 
     return train_manifest, val_manifest, test_manifest
 
@@ -103,6 +127,8 @@ def _group_by_speaker(manifest: Manifest, by: str) -> list[SpeakerGroup]:
     Returns:
         List of SpeakerGroup objects.
     """
+    log.debug("grouping_by_speaker", by=by, total_entries=len(manifest))
+
     # Use voice field as speaker identifier, or "unknown" if None
     groups: dict[str, list] = defaultdict(list)
 
@@ -123,6 +149,12 @@ def _group_by_speaker(manifest: Manifest, by: str) -> list[SpeakerGroup]:
                 negative_count=negative_count,
             )
         )
+
+    log.debug(
+        "speaker_groups_formed",
+        speaker_count=len(result),
+        unknown_count=sum(1 for g in result if g.speaker_id == "unknown"),
+    )
 
     return result
 
@@ -280,6 +312,7 @@ def _validate_split(
         SplitValidationError: If validation fails.
     """
     errors: list[str] = []
+    warnings: list[str] = []
 
     # Check no overlapping entries
     train_paths = {e.path for e in train}
@@ -326,4 +359,9 @@ def _validate_split(
         errors.append(f"Speaker leakage: {len(val_test_speakers)} speakers in val and test")
 
     if errors:
+        log.error("split_validation_failed", errors=errors)
         raise SplitValidationError(errors)
+
+    if warnings:
+        for w in warnings:
+            log.warning("split_validation_warning", warning=w)

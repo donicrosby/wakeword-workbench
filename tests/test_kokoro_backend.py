@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from wakeword_workbench.tts.base import BackendNotAvailableError, TTSError, TTSResult
+from wakeword_workbench.tts.cache import TTSCache, reset_default_cache
 from wakeword_workbench.tts.kokoro_backend import KokoroBackend
 
 
@@ -136,12 +138,15 @@ class TestKokoroBackendSynthesize:
         mock_pipeline.return_value = mock_instance
 
         with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
-            KokoroBackend._pipeline = None
-            backend = KokoroBackend(voice="af_nicole", speed=1.2)
+            with patch("wakeword_workbench.tts.kokoro_backend.get_default_cache") as mock_get_cache:
+                # Mock cache miss
+                mock_get_cache.return_value.get.return_value = None
+                KokoroBackend._pipeline = None
+                backend = KokoroBackend(voice="af_nicole", speed=1.2)
 
-            backend.synthesize("Test")
+                backend.synthesize("Test")
 
-            mock_instance.generate.assert_called_once_with("Test", voice="af_nicole", speed=1.2)
+                mock_instance.generate.assert_called_once_with("Test", voice="af_nicole", speed=1.2)
 
     @patch("wakeword_workbench.tts.kokoro_backend.KokoroPipeline")
     def test_synthesize_normalizes_audio(self, mock_pipeline: MagicMock) -> None:
@@ -207,3 +212,102 @@ class TestKokoroBackendRegistration:
 
         assert "kokoro" in TTSBackend._backend_registry
         assert TTSBackend._backend_registry["kokoro"] is KokoroBackend
+
+
+class TestKokoroBackendCaching:
+    """Test KokoroBackend caching integration."""
+
+    @pytest.fixture
+    def mock_cache(self, tmp_path: Path) -> TTSCache:
+        """Create a fresh cache for testing."""
+        reset_default_cache()
+        return TTSCache(cache_dir=tmp_path / "tts_cache")
+
+    @patch("wakeword_workbench.tts.kokoro_backend.KokoroPipeline")
+    def test_synthesize_caches_result(
+        self, mock_pipeline: MagicMock, tmp_path: Path, mock_cache: TTSCache
+    ) -> None:
+        """Test that synthesize stores result in cache after synthesis."""
+        mock_audio = np.zeros(24000, dtype=np.float32)
+        mock_instance = MagicMock()
+        mock_instance.generate.return_value = mock_audio
+        mock_pipeline.return_value = mock_instance
+
+        with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
+            with patch(
+                "wakeword_workbench.tts.kokoro_backend.get_default_cache", return_value=mock_cache
+            ):
+                KokoroBackend._pipeline = None
+                backend = KokoroBackend(voice="af_sarah", speed=1.0)
+
+                # First synthesis should cache the result
+                result = backend.synthesize("hello world")
+
+                # Verify cache contains the result
+                cached = mock_cache.get("hello world", "af_sarah", "kokoro", 1.0)
+                assert cached is not None
+                np.testing.assert_array_equal(cached.audio, result.audio)
+
+    @patch("wakeword_workbench.tts.kokoro_backend.KokoroPipeline")
+    def test_synthesize_returns_cached_result(
+        self, mock_pipeline: MagicMock, tmp_path: Path, mock_cache: TTSCache
+    ) -> None:
+        """Test that synthesize returns cached result without calling pipeline."""
+        mock_audio = np.zeros(24000, dtype=np.float32)
+        mock_instance = MagicMock()
+        mock_instance.generate.return_value = mock_audio
+        mock_pipeline.return_value = mock_instance
+
+        # Pre-populate cache
+        cached_audio = np.zeros(16000, dtype=np.float32)
+        cached_result = TTSResult(
+            audio=cached_audio,
+            sample_rate=16000,
+            duration=1.0,
+        )
+        mock_cache.put("hello world", "af_sarah", "kokoro", cached_result, 1.0)
+
+        with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
+            with patch(
+                "wakeword_workbench.tts.kokoro_backend.get_default_cache", return_value=mock_cache
+            ):
+                KokoroBackend._pipeline = None
+                backend = KokoroBackend(voice="af_sarah", speed=1.0)
+
+                result = backend.synthesize("hello world")
+
+                # Pipeline should NOT have been called
+                mock_instance.generate.assert_not_called()
+
+                # Result should be from cache
+                np.testing.assert_array_equal(result.audio, cached_audio)
+
+    @patch("wakeword_workbench.tts.kokoro_backend.KokoroPipeline")
+    def test_synthesize_different_speed_caches_separately(
+        self, mock_pipeline: MagicMock, tmp_path: Path, mock_cache: TTSCache
+    ) -> None:
+        """Test that different speeds cache separately."""
+        mock_audio = np.zeros(24000, dtype=np.float32)
+        mock_instance = MagicMock()
+        mock_instance.generate.return_value = mock_audio
+        mock_pipeline.return_value = mock_instance
+
+        with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
+            with patch(
+                "wakeword_workbench.tts.kokoro_backend.get_default_cache", return_value=mock_cache
+            ):
+                KokoroBackend._pipeline = None
+                backend1 = KokoroBackend(voice="af_sarah", speed=1.0)
+                backend2 = KokoroBackend(voice="af_sarah", speed=1.5)
+
+                # Synthesize with different speeds
+                result1 = backend1.synthesize("hello")
+                result2 = backend2.synthesize("hello")
+
+                # Both should be in cache with different keys
+                cached1 = mock_cache.get("hello", "af_sarah", "kokoro", 1.0)
+                cached2 = mock_cache.get("hello", "af_sarah", "kokoro", 1.5)
+                assert cached1 is not None
+                assert cached2 is not None
+                # They might have different audio due to speed
+                assert cached1.audio.shape == cached2.audio.shape

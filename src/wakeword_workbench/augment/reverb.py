@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 import numpy as np
 import scipy.signal
 import soundfile as sf
 
-logger = logging.getLogger(__name__)
+from wakeword_workbench.logging_config import get_logger
+
+log = get_logger(__name__)
 
 
 class ReverbError(Exception):
@@ -101,7 +102,7 @@ class AddReverb:
             raise ReverbError(f"No RIR files (.wav, .flac) found in: {self._rir_dir}")
 
         self._available_rirs = rir_files
-        logger.debug("Found %d RIR files in %s", len(rir_files), self._rir_dir)
+        log.debug("rir_files_loaded", count=len(rir_files), rir_dir=str(self._rir_dir))
 
     def _load_rir(self, path: Path, target_sr: int) -> np.ndarray:
         """Load and optionally resample an RIR file.
@@ -130,7 +131,7 @@ class AddReverb:
             rir = rir / (np.abs(rir).max() + 1e-10)
 
             self._cache.put(path, rir)
-            logger.debug("Loaded and cached RIR from %s (sr=%d)", path, rir_sr)
+            log.debug("rir_cached", path=str(path), sr=rir_sr)
 
         return rir
 
@@ -233,7 +234,7 @@ class AddReverb:
         try:
             rir, rir_sr = sf.read(rir_path, dtype="float32")
         except Exception as e:
-            logger.warning("Failed to load RIR %s: %s, returning original", rir_path, e)
+            log.warning("rir_load_failed", path=str(rir_path), error=str(e))
             return audio
 
         # Handle stereo RIRs (average to mono)
@@ -262,6 +263,6 @@ class AddReverb:
 
         # Log room characteristics
         rt60 = self.estimate_rt60(rir)
-        logger.debug("Applied reverb from %s (RT60=%.2fs, sr=%d)", rir_path.name, rt60, sr)
+        log.debug("reverb_applied", rir_path=rir_path.name, rt60=round(rt60, 2), sr=sr)
 
         return reverb_audio.astype(np.float32)

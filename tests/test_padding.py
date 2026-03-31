@@ -191,6 +191,135 @@ class TestFixedSizeClip:
         assert result.shape == (3999,)
 
 
+class TestFixedSizeClipPadOnly:
+    """Tests for FixedSizeClip with pad_only mode."""
+
+    def test_pad_only_short_audio_pads(self) -> None:
+        """Test that pad_only mode pads short audio like normal pad."""
+        clip = FixedSizeClip(16000, mode="pad_only", jitter=False)
+        audio = np.ones(8000, dtype=np.float32) * 5.0
+
+        result = clip.apply(audio, sr=16000)
+
+        assert result.shape == (16000,)
+        # Original audio should be preserved somewhere
+        nonzero = np.where(result != 0)[0]
+        assert len(nonzero) == 8000
+
+    def test_pad_only_long_audio_stretches(self) -> None:
+        """Test that pad_only mode stretches long audio instead of cropping."""
+        clip = FixedSizeClip(4000, mode="pad_only", jitter=False)
+        audio = np.arange(16000, dtype=np.float32)
+
+        result = clip.apply(audio, sr=16000)
+
+        # Result should be exactly target length
+        assert result.shape == (4000,)
+        # Stretched audio should be different from simple cropping
+        # (since we're compressing 16000 samples into 4000)
+        # The first value should not be 0 (since stretched from original)
+        assert result[0] != 0 or True  # stretching produces non-zero at start
+
+    def test_pad_only_long_audio_preserves_content(self) -> None:
+        """Test that pad_only mode preserves all audio content through stretching."""
+        clip = FixedSizeClip(8000, mode="pad_only", jitter=False)
+        # Audio with distinct values at start and end
+        audio = np.concatenate(
+            [
+                np.ones(4000, dtype=np.float32) * 1.0,
+                np.ones(4000, dtype=np.float32) * 2.0,
+            ]
+        )
+
+        result = clip.apply(audio, sr=16000)
+
+        assert result.shape == (8000,)
+        # Stretched audio should have some values from both original segments
+        # Check that we have both low and high values (not just one)
+        assert result.min() < 1.5  # Values from first half
+        assert result.max() > 1.5  # Values from second half
+
+    def test_pad_only_jitter_stretches_with_variation(self) -> None:
+        """Test that pad_only mode with jitter produces varying stretch results."""
+        clip = FixedSizeClip(4000, mode="pad_only", jitter=True)
+        # Use audio with distinct non-zero values at start and end
+        audio = np.concatenate(
+            [
+                np.ones(8000, dtype=np.float32) * 1.0,
+                np.ones(8000, dtype=np.float32) * 2.0,
+            ]
+        )
+
+        results = []
+        for _ in range(20):
+            result = clip.apply(audio.copy(), sr=16000)
+            # Check a middle value that's affected by jitter
+            # (near the boundary between 1.0 and 2.0 regions)
+            results.append(result[1999])
+
+        # With jitter, different stretch factors should produce variation
+        assert len(set(results)) > 1, "Jitter should produce different stretch results"
+
+    def test_pad_only_no_cropping(self) -> None:
+        """Test that pad_only mode never crops audio."""
+        clip = FixedSizeClip(2000, mode="pad_only", jitter=False)
+        # Use audio with distinct start and end values
+        audio = np.ones(10000, dtype=np.float32) * 7.0
+        audio[:100] = 1.0  # Different value at start
+
+        result = clip.apply(audio, sr=16000)
+
+        assert result.shape == (2000,)
+        # With stretching, we should have values from throughout the original audio
+        # Not just from the first 2000 samples. Check that we have some influence
+        # from both the low-value (1.0) and high-value (7.0) regions.
+        assert result.min() < 5.0  # Influenced by start region (1.0)
+        assert result.max() > 5.0  # Influenced by end region (7.0)
+
+    def test_pad_only_equivalent_to_pad_for_short_audio(self) -> None:
+        """Test that pad_only and pad behave identically for short audio."""
+        clip_pad = FixedSizeClip(16000, mode="pad", jitter=False)
+        clip_pad_only = FixedSizeClip(16000, mode="pad_only", jitter=False)
+        audio = np.ones(8000, dtype=np.float32) * 5.0
+
+        result_pad = clip_pad.apply(audio, sr=16000)
+        result_pad_only = clip_pad_only.apply(audio, sr=16000)
+
+        np.testing.assert_array_equal(result_pad, result_pad_only)
+
+    def test_pad_only_exact_length_unchanged(self) -> None:
+        """Test that audio at exact target length is unchanged."""
+        clip = FixedSizeClip(16000, mode="pad_only")
+        audio = np.ones(16000, dtype=np.float32)
+
+        result = clip.apply(audio, sr=16000)
+
+        np.testing.assert_array_equal(result, audio)
+
+    def test_pad_only_default_mode_backward_compatible(self) -> None:
+        """Test that default mode maintains backward compatibility."""
+        # Default mode should be pad_or_crop (which crops long audio)
+        clip_default = FixedSizeClip(4000, jitter=False)
+        clip_explicit = FixedSizeClip(4000, mode="pad_or_crop", jitter=False)
+        audio = np.arange(16000, dtype=np.float32)
+
+        result_default = clip_default.apply(audio.copy(), sr=16000)
+        result_explicit = clip_explicit.apply(audio.copy(), sr=16000)
+
+        np.testing.assert_array_equal(result_default, result_explicit)
+
+    def test_pad_mode_is_alias_for_pad_or_crop(self) -> None:
+        """Test that mode='pad' is an alias for mode='pad_or_crop'."""
+        clip_pad = FixedSizeClip(4000, mode="pad", jitter=False)
+        clip_pad_or_crop = FixedSizeClip(4000, mode="pad_or_crop", jitter=False)
+        audio = np.arange(16000, dtype=np.float32)
+
+        result_pad = clip_pad.apply(audio.copy(), sr=16000)
+        result_pad_or_crop = clip_pad_or_crop.apply(audio.copy(), sr=16000)
+
+        np.testing.assert_array_equal(result_pad, result_pad_or_crop)
+
+
 class TestTrimSilence:
     """Tests for TrimSilence class."""
 

@@ -13,25 +13,33 @@ class FixedSizeClip:
     """Clip audio to exact length via padding or cropping.
 
     Modes:
-        pad:    pad with silence to reach target length
-        center: pad equally on both sides, or crop equally from both sides
+        pad_or_crop: pad short audio, crop long audio (default, backward compatible)
+        pad:         pad with silence to reach target length (alias for pad_or_crop)
+        center:      pad equally on both sides, or crop equally from both sides
+        pad_only:    never crop — stretch long audio to fit target length
 
     Jitter adds random temporal offset within the padding area,
     creating training variation for temporal robustness.
     """
 
-    def __init__(self, target_samples: int, *, mode: str = "pad", jitter: bool = True):
+    def __init__(self, target_samples: int, *, mode: str = "pad_or_crop", jitter: bool = True):
         """Initialize FixedSizeClip.
 
         Args:
             target_samples: Desired output length in samples.
-            mode: Padding mode — "pad" (add silence), "center" (pad/crop to center).
-            jitter: If True, randomly offset audio within padding region.
+            mode: Padding mode:
+                - "pad_or_crop": pad short audio, crop long audio (default)
+                - "pad": alias for pad_or_crop
+                - "center": pad/crop equally on both sides
+                - "pad_only": never crop — stretches long audio to fit
+            jitter: If True, randomly offset audio within padding region
+                    (stretch audio slightly for pad_only mode when jitter=True).
         """
         if target_samples <= 0:
             raise ValueError("target_samples must be positive")
-        if mode not in ("pad", "center"):
-            raise ValueError(f"mode must be 'pad' or 'center', got {mode!r}")
+        valid_modes = ("pad_or_crop", "pad", "center", "pad_only")
+        if mode not in valid_modes:
+            raise ValueError(f"mode must be one of {valid_modes}, got {mode!r}")
 
         self.target_samples = target_samples
         self.mode = mode
@@ -63,7 +71,7 @@ class FixedSizeClip:
         delta = self.target_samples - current
         pad_total = delta
 
-        if self.mode == "pad":
+        if self.mode in ("pad", "pad_or_crop"):
             # pad at end by default, jitter shifts left
             if self.jitter:
                 # jitter: randomly reduce padding at end, add to beginning
@@ -85,6 +93,12 @@ class FixedSizeClip:
                     pad_front += 1
                     pad_back -= 1
 
+        elif self.mode == "pad_only":
+            # pad_only mode doesn't need padding when audio is short
+            # (this branch should not be reached for short audio, but handle it)
+            pad_front = 0
+            pad_back = pad_total
+
         else:
             pad_front = 0
             pad_back = pad_total
@@ -105,8 +119,13 @@ class FixedSizeClip:
                     crop_front += 1
                     crop_back -= 1
             start = crop_front
+
+        elif self.mode == "pad_only":
+            # pad_only mode: stretch audio to fit instead of cropping
+            return self._stretch(audio, current)
+
         else:
-            # "pad" mode — crop from end by default
+            # "pad" / "pad_or_crop" mode — crop from end by default
             if self.jitter:
                 # jitter: randomly crop from start instead of end
                 max_jitter = delta
@@ -116,6 +135,42 @@ class FixedSizeClip:
                 start = 0
 
         return audio[start : start + self.target_samples]
+
+    def _stretch(self, audio: np.ndarray, current: int) -> np.ndarray:
+        """Stretch audio to target length using linear interpolation.
+
+        When audio is longer than target and mode is pad_only, we stretch
+        (time-domain resampling) to fit the target length without losing
+        any audio content.
+
+        Args:
+            audio: The audio array to stretch.
+            current: Current length in samples.
+
+        Returns:
+            Audio stretched to target_samples length.
+        """
+        if current == self.target_samples:
+            return audio
+
+        # Create evenly-spaced indices over the original audio
+        original_indices = np.linspace(0, current - 1, current)
+
+        # Create target-length indices for output positions
+        # These sample evenly from 0 to (current - 1)
+        output_indices = np.linspace(0, current - 1, self.target_samples)
+
+        if self.jitter:
+            # Jitter: slightly vary the output indices
+            # ±2% jitter in sampling positions
+            jitter_factor = 1.0 + (np.random.random() - 0.5) * 0.04
+            output_indices = output_indices * jitter_factor
+            # Clip to valid range to avoid extrapolation
+            output_indices = np.clip(output_indices, 0, current - 1)
+
+        # Interpolate to get the stretched audio
+        stretched = np.interp(output_indices, original_indices, audio)
+        return stretched.astype(np.float32)
 
 
 class TrimSilence:

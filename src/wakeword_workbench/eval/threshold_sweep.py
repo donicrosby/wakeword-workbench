@@ -63,7 +63,7 @@ def sweep(
     results: list[ThresholdResult] = []
     for t in threshold_values:
         far = calculate_far(predictions, None, audio_duration_hours, threshold=float(t))
-        frr = calculate_frr(ground_truth, predictions, threshold=float(t))
+        frr = calculate_frr(predictions, ground_truth, threshold=float(t))
         results.append(ThresholdResult(threshold=float(t), far=far, frr=frr))
 
     return results

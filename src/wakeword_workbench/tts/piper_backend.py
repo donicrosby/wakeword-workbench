@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import urllib.request
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
@@ -28,12 +29,22 @@ except ImportError:
 if TYPE_CHECKING:
     from piper import PiperVoice  # type: ignore[import-untyped]
 
+# Default Piper model configuration
+_DEFAULT_MODEL_NAME = "en_US-lessac-medium"
+_DEFAULT_MODEL_URL = (
+    f"https://github.com/rhasspy/piper/releases/download/2024.11.14-2/{_DEFAULT_MODEL_NAME}.onnx"
+)
+_PIPER_MODEL_CACHE_DIR = Path.home() / ".cache" / "wakeword_workbench" / "piper_models"
+
 
 class PiperBackend(TTSBackend):
     """Piper TTS backend implementation.
 
     Piper outputs audio at 22050 Hz, which is resampled to 16000 Hz
     to match the target format for wake word detection models.
+
+    When model_path is None, automatically downloads the default model
+    (en_US-lessac-medium) to the cache directory.
 
     Attributes:
         model_path: Path to the Piper ONNX model file.
@@ -47,34 +58,70 @@ class PiperBackend(TTSBackend):
     _TARGET_SAMPLE_RATE: ClassVar[int] = 16000
     """Target sample rate for wake word models."""
 
-    def __init__(self, model_path: str, use_cuda: bool = False) -> None:
+    def __init__(self, model_path: str | None = None, use_cuda: bool = False) -> None:
         """Initialize the Piper backend.
 
         Args:
             model_path: Path to the Piper ONNX model file (.onnx).
+                If None, downloads the default model automatically.
             use_cuda: Whether to use CUDA for inference (default False).
 
         Raises:
             BackendNotAvailableError: If piper is not installed.
-            TTSError: If the model cannot be loaded.
+            TTSError: If the model cannot be loaded or downloaded.
         """
         if not self.is_available():
             raise BackendNotAvailableError(
                 "Piper TTS is not available. Install it with: pip install piper-tts"
             )
 
-        self.model_path = Path(model_path)
-        if not self.model_path.exists():
-            raise TTSError(f"Piper model not found: {model_path}")
-
         self.use_cuda = use_cuda
         self._voice: "PiperVoice" | None = None  # type: ignore[name-defined]
+
+        # Resolve model_path: use provided path or download default
+        if model_path is None:
+            self.model_path = self._download_default_model()
+        else:
+            self.model_path = Path(model_path)
+            if not self.model_path.exists():
+                raise TTSError(
+                    f"Piper model not found: {model_path}. "
+                    f"Hint: omit model_path to auto-download the default model."
+                )
 
         try:
             # Load the Piper voice model
             self._voice = PiperVoice.load(str(self.model_path))  # type: ignore[union-attr]
         except Exception as e:
             raise TTSError(f"Failed to load Piper model: {e}") from e
+
+    @classmethod
+    def _download_default_model(cls) -> Path:
+        """Download the default Piper model if not cached.
+
+        Returns:
+            Path to the downloaded model file.
+
+        Raises:
+            TTSError: If download fails.
+        """
+        model_path = _PIPER_MODEL_CACHE_DIR / f"{_DEFAULT_MODEL_NAME}.onnx"
+
+        if model_path.exists():
+            return model_path
+
+        # Ensure cache directory exists
+        _PIPER_MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+        print(f"Downloading Piper default model to {model_path}...")
+        try:
+            urllib.request.urlretrieve(_DEFAULT_MODEL_URL, model_path)
+            return model_path
+        except Exception as e:
+            raise TTSError(
+                f"Failed to download default Piper model. "
+                f"Please provide a model_path explicitly or download from: {_DEFAULT_MODEL_URL}"
+            ) from e
 
     def synthesize(self, text: str) -> TTSResult:
         """Synthesize speech from text.

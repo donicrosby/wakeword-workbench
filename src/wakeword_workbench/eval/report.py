@@ -77,7 +77,7 @@ def _calculate_eer(
     for t in threshold_values:
         threshold = float(t)
         far = calculate_far(predictions, None, audio_duration_hours, threshold=threshold)
-        frr = calculate_frr(ground_truth, predictions, threshold=threshold)
+        frr = calculate_frr(predictions, ground_truth, threshold=threshold)
         far_values.append(far)
         frr_values.append(frr)
 
@@ -122,7 +122,7 @@ def _calculate_eer(
 
     # Compute EER at that threshold.
     far_at_eer = calculate_far(predictions, None, audio_duration_hours, threshold=optimal_threshold)
-    frr_at_eer = calculate_frr(ground_truth, predictions, threshold=optimal_threshold)
+    frr_at_eer = calculate_frr(predictions, ground_truth, threshold=optimal_threshold)
 
     # EER is the average of normalized FAR and FRR at the crossing point.
     if max_far > 0:
@@ -240,7 +240,7 @@ def generate_report(
         total_samples = len(predictions)
 
     far = float(calculate_far(predictions, None, audio_duration_hours))
-    frr = float(calculate_frr(ground_truth, predictions))
+    frr = float(calculate_frr(predictions, ground_truth))
 
     eer, optimal_threshold = _calculate_eer(predictions, ground_truth, audio_duration_hours)
 

@@ -25,14 +25,14 @@ def valid_mww_dir(tmp_path: Path) -> Path:
     export_dir = tmp_path / "mww_export"
     export_dir.mkdir()
 
-    # Create valid data
+    # Create valid data with split-based filenames
     features = np.random.randn(100, 40).astype(np.float32)
     labels = np.array([1 if i < 50 else 0 for i in range(100)], dtype=np.int32)
     indices = np.arange(100, dtype=np.int32)
 
-    np.save(export_dir / "features.npy", features)
-    np.save(export_dir / "labels.npy", labels)
-    np.save(export_dir / "indices.npy", indices)
+    np.save(export_dir / "train_data.npy", features)
+    np.save(export_dir / "train_labels.npy", labels)
+    np.save(export_dir / "train_indices.npy", indices)
 
     return export_dir
 
@@ -43,12 +43,12 @@ def valid_oww_dir(tmp_path: Path) -> Path:
     export_dir = tmp_path / "oww_export"
     export_dir.mkdir()
 
-    # Create valid data
+    # Create valid data with split-based filenames
     X = np.random.randn(100, 40).astype(np.float32)
     y = np.array([1 if i < 50 else 0 for i in range(100)], dtype=np.int32)
 
-    np.save(export_dir / "X.npy", X)
-    np.save(export_dir / "y.npy", y)
+    np.save(export_dir / "X_train.npy", X)
+    np.save(export_dir / "y_train.npy", y)
 
     return export_dir
 
@@ -103,45 +103,45 @@ class TestValidateMicrowakeword:
         assert report.stats["n_negatives"] == 50
 
     def test_missing_features_file(self, tmp_path: Path) -> None:
-        """Test validation fails when features.npy is missing."""
+        """Test validation fails when train_data.npy is missing."""
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
-        np.save(export_dir / "labels.npy", np.array([0, 1]))
-        np.save(export_dir / "indices.npy", np.array([0, 1]))
+        np.save(export_dir / "train_labels.npy", np.array([0, 1]))
+        np.save(export_dir / "train_indices.npy", np.array([0, 1]))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
-        assert any("features.npy" in err for err in report.errors)
+        assert any("train_data.mmap or train_data.npy" in err for err in report.errors)
 
     def test_missing_labels_file(self, tmp_path: Path) -> None:
-        """Test validation fails when labels.npy is missing."""
+        """Test validation fails when train_labels.npy is missing."""
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "indices.npy", np.arange(10))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_indices.npy", np.arange(10))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
-        assert any("labels.npy" in err for err in report.errors)
+        assert any("train_labels.npy" in err for err in report.errors)
 
     def test_missing_indices_file(self, tmp_path: Path) -> None:
-        """Test validation fails when indices.npy is missing."""
+        """Test validation fails when train_indices.npy is missing."""
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "labels.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_labels.npy", np.array([0, 1] * 5))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
-        assert any("indices.npy" in err for err in report.errors)
+        assert any("train_indices.npy" in err for err in report.errors)
 
     def test_empty_file(self, tmp_path: Path) -> None:
         """Test validation fails for empty files."""
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
-        (export_dir / "features.npy").touch()
-        np.save(export_dir / "labels.npy", np.array([0, 1]))
-        np.save(export_dir / "indices.npy", np.arange(2))
+        (export_dir / "train_data.npy").touch()
+        np.save(export_dir / "train_labels.npy", np.array([0, 1]))
+        np.save(export_dir / "train_indices.npy", np.arange(2))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -152,9 +152,9 @@ class TestValidateMicrowakeword:
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "labels.npy", np.array([0, 1] * 3))  # 6 labels
-        np.save(export_dir / "indices.npy", np.arange(10))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_labels.npy", np.array([0, 1] * 3))  # 6 labels
+        np.save(export_dir / "train_indices.npy", np.arange(10))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -165,9 +165,9 @@ class TestValidateMicrowakeword:
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "labels.npy", np.array([0, 1] * 5))
-        np.save(export_dir / "indices.npy", np.arange(5))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_labels.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "train_indices.npy", np.arange(5))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -178,9 +178,9 @@ class TestValidateMicrowakeword:
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "features.npy", np.random.randn(10))  # 1D array
-        np.save(export_dir / "labels.npy", np.array([0, 1] * 5))
-        np.save(export_dir / "indices.npy", np.arange(10))
+        np.save(export_dir / "train_data.npy", np.random.randn(10))  # 1D array
+        np.save(export_dir / "train_labels.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "train_indices.npy", np.arange(10))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -191,9 +191,9 @@ class TestValidateMicrowakeword:
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "labels.npy", np.random.randn(10, 1))  # 2D array
-        np.save(export_dir / "indices.npy", np.arange(10))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_labels.npy", np.random.randn(10, 1))  # 2D array
+        np.save(export_dir / "train_indices.npy", np.arange(10))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -204,9 +204,9 @@ class TestValidateMicrowakeword:
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "labels.npy", np.array([0, 1, 2, 0, 1, 2, 0, 1, 2, 0]))
-        np.save(export_dir / "indices.npy", np.arange(10))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_labels.npy", np.array([0, 1, 2, 0, 1, 2, 0, 1, 2, 0]))
+        np.save(export_dir / "train_indices.npy", np.arange(10))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -217,9 +217,9 @@ class TestValidateMicrowakeword:
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "labels.npy", np.array([0, 1] * 5))
-        np.save(export_dir / "indices.npy", np.arange(10, dtype=np.float32))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_labels.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "train_indices.npy", np.arange(10, dtype=np.float32))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -230,9 +230,9 @@ class TestValidateMicrowakeword:
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "labels.npy", np.array([0, 1] * 5))
-        np.save(export_dir / "indices.npy", np.array([0, 1, -1, 3, 4, 5, 6, 7, 8, 9]))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_labels.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "train_indices.npy", np.array([0, 1, -1, 3, 4, 5, 6, 7, 8, 9]))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -243,9 +243,9 @@ class TestValidateMicrowakeword:
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "labels.npy", np.array([0, 1] * 5))
-        np.save(export_dir / "indices.npy", np.array([0, 1, 10, 3, 4, 5, 6, 7, 8, 9]))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_labels.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "train_indices.npy", np.array([0, 1, 10, 3, 4, 5, 6, 7, 8, 9]))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -258,9 +258,9 @@ class TestValidateMicrowakeword:
 
         features = np.random.randn(10, 40)
         features[0, 0] = np.nan
-        np.save(export_dir / "features.npy", features)
-        np.save(export_dir / "labels.npy", np.array([0, 1] * 5))
-        np.save(export_dir / "indices.npy", np.arange(10))
+        np.save(export_dir / "train_data.npy", features)
+        np.save(export_dir / "train_labels.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "train_indices.npy", np.arange(10))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -273,9 +273,9 @@ class TestValidateMicrowakeword:
 
         features = np.random.randn(10, 40)
         features[0, 0] = np.inf
-        np.save(export_dir / "features.npy", features)
-        np.save(export_dir / "labels.npy", np.array([0, 1] * 5))
-        np.save(export_dir / "indices.npy", np.arange(10))
+        np.save(export_dir / "train_data.npy", features)
+        np.save(export_dir / "train_labels.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "train_indices.npy", np.arange(10))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -286,10 +286,10 @@ class TestValidateMicrowakeword:
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
         labels = np.array([0.0, np.nan, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0])
-        np.save(export_dir / "labels.npy", labels)
-        np.save(export_dir / "indices.npy", np.arange(10))
+        np.save(export_dir / "train_labels.npy", labels)
+        np.save(export_dir / "train_indices.npy", np.arange(10))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is False
@@ -300,9 +300,9 @@ class TestValidateMicrowakeword:
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "labels.npy", np.zeros(10, dtype=np.int32))
-        np.save(export_dir / "indices.npy", np.arange(10))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_labels.npy", np.zeros(10, dtype=np.int32))
+        np.save(export_dir / "train_indices.npy", np.arange(10))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is True
@@ -313,9 +313,9 @@ class TestValidateMicrowakeword:
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "labels.npy", np.ones(10, dtype=np.int32))
-        np.save(export_dir / "indices.npy", np.arange(10))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_labels.npy", np.ones(10, dtype=np.int32))
+        np.save(export_dir / "train_indices.npy", np.arange(10))
 
         report = validate_microwakeword(export_dir)
         assert report.valid is True
@@ -340,31 +340,31 @@ class TestValidateOpenwakeword:
         assert report.stats["n_negatives"] == 50
 
     def test_missing_X_file(self, tmp_path: Path) -> None:
-        """Test validation fails when X.npy is missing."""
+        """Test validation fails when X_train.npy is missing."""
         export_dir = tmp_path / "oww_export"
         export_dir.mkdir()
-        np.save(export_dir / "y.npy", np.array([0, 1]))
+        np.save(export_dir / "y_train.npy", np.array([0, 1]))
 
         report = validate_openwakeword(export_dir)
         assert report.valid is False
-        assert any("X.npy" in err for err in report.errors)
+        assert any("X_train.npy" in err for err in report.errors)
 
     def test_missing_y_file(self, tmp_path: Path) -> None:
-        """Test validation fails when y.npy is missing."""
+        """Test validation fails when y_train.npy is missing."""
         export_dir = tmp_path / "oww_export"
         export_dir.mkdir()
-        np.save(export_dir / "X.npy", np.random.randn(10, 40))
+        np.save(export_dir / "X_train.npy", np.random.randn(10, 40))
 
         report = validate_openwakeword(export_dir)
         assert report.valid is False
-        assert any("y.npy" in err for err in report.errors)
+        assert any("y_train.npy" in err for err in report.errors)
 
     def test_empty_file(self, tmp_path: Path) -> None:
         """Test validation fails for empty files."""
         export_dir = tmp_path / "oww_export"
         export_dir.mkdir()
-        (export_dir / "X.npy").touch()
-        np.save(export_dir / "y.npy", np.array([0, 1]))
+        (export_dir / "X_train.npy").touch()
+        np.save(export_dir / "y_train.npy", np.array([0, 1]))
 
         report = validate_openwakeword(export_dir)
         assert report.valid is False
@@ -375,8 +375,8 @@ class TestValidateOpenwakeword:
         export_dir = tmp_path / "oww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "X.npy", np.random.randn(10, 40))
-        np.save(export_dir / "y.npy", np.array([0, 1] * 3))  # 6 labels
+        np.save(export_dir / "X_train.npy", np.random.randn(10, 40))
+        np.save(export_dir / "y_train.npy", np.array([0, 1] * 3))  # 6 labels
 
         report = validate_openwakeword(export_dir)
         assert report.valid is False
@@ -387,8 +387,8 @@ class TestValidateOpenwakeword:
         export_dir = tmp_path / "oww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "X.npy", np.random.randn(10))  # 1D array
-        np.save(export_dir / "y.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "X_train.npy", np.random.randn(10))  # 1D array
+        np.save(export_dir / "y_train.npy", np.array([0, 1] * 5))
 
         report = validate_openwakeword(export_dir)
         assert report.valid is False
@@ -399,8 +399,8 @@ class TestValidateOpenwakeword:
         export_dir = tmp_path / "oww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "X.npy", np.random.randn(10, 40))
-        np.save(export_dir / "y.npy", np.random.randn(10, 1))  # 2D array
+        np.save(export_dir / "X_train.npy", np.random.randn(10, 40))
+        np.save(export_dir / "y_train.npy", np.random.randn(10, 1))  # 2D array
 
         report = validate_openwakeword(export_dir)
         assert report.valid is False
@@ -411,8 +411,8 @@ class TestValidateOpenwakeword:
         export_dir = tmp_path / "oww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "X.npy", np.random.randn(10, 40))
-        np.save(export_dir / "y.npy", np.array([0, 1, 2, 0, 1, 2, 0, 1, 2, 0]))
+        np.save(export_dir / "X_train.npy", np.random.randn(10, 40))
+        np.save(export_dir / "y_train.npy", np.array([0, 1, 2, 0, 1, 2, 0, 1, 2, 0]))
 
         report = validate_openwakeword(export_dir)
         assert report.valid is False
@@ -425,8 +425,8 @@ class TestValidateOpenwakeword:
 
         X = np.random.randn(10, 40)
         X[0, 0] = np.nan
-        np.save(export_dir / "X.npy", X)
-        np.save(export_dir / "y.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "X_train.npy", X)
+        np.save(export_dir / "y_train.npy", np.array([0, 1] * 5))
 
         report = validate_openwakeword(export_dir)
         assert report.valid is False
@@ -439,8 +439,8 @@ class TestValidateOpenwakeword:
 
         X = np.random.randn(10, 40)
         X[0, 0] = np.inf
-        np.save(export_dir / "X.npy", X)
-        np.save(export_dir / "y.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "X_train.npy", X)
+        np.save(export_dir / "y_train.npy", np.array([0, 1] * 5))
 
         report = validate_openwakeword(export_dir)
         assert report.valid is False
@@ -451,9 +451,9 @@ class TestValidateOpenwakeword:
         export_dir = tmp_path / "oww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "X.npy", np.random.randn(10, 40))
+        np.save(export_dir / "X_train.npy", np.random.randn(10, 40))
         y = np.array([0.0, np.nan, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0])
-        np.save(export_dir / "y.npy", y)
+        np.save(export_dir / "y_train.npy", y)
 
         report = validate_openwakeword(export_dir)
         assert report.valid is False
@@ -464,8 +464,8 @@ class TestValidateOpenwakeword:
         export_dir = tmp_path / "oww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "X.npy", np.random.randn(10, 40))
-        np.save(export_dir / "y.npy", np.zeros(10, dtype=np.int32))
+        np.save(export_dir / "X_train.npy", np.random.randn(10, 40))
+        np.save(export_dir / "y_train.npy", np.zeros(10, dtype=np.int32))
 
         report = validate_openwakeword(export_dir)
         assert report.valid is True
@@ -476,8 +476,8 @@ class TestValidateOpenwakeword:
         export_dir = tmp_path / "oww_export"
         export_dir.mkdir()
 
-        np.save(export_dir / "X.npy", np.random.randn(10, 40))
-        np.save(export_dir / "y.npy", np.ones(10, dtype=np.int32))
+        np.save(export_dir / "X_train.npy", np.random.randn(10, 40))
+        np.save(export_dir / "y_train.npy", np.ones(10, dtype=np.int32))
 
         report = validate_openwakeword(export_dir)
         assert report.valid is True
@@ -498,8 +498,8 @@ class TestValidatorIntegration:
         export_dir.mkdir()
 
         # Write invalid numpy file
-        (export_dir / "X.npy").write_bytes(b"not a numpy file")
-        np.save(export_dir / "y.npy", np.array([0, 1]))
+        (export_dir / "X_train.npy").write_bytes(b"not a numpy file")
+        np.save(export_dir / "y_train.npy", np.array([0, 1]))
 
         report = validate_openwakeword(export_dir)
         assert report.valid is False
@@ -524,15 +524,15 @@ class TestValidatorIntegration:
         # Create a directory with MicroWakeWord files
         export_dir = tmp_path / "mww_export"
         export_dir.mkdir()
-        np.save(export_dir / "features.npy", np.random.randn(10, 40))
-        np.save(export_dir / "labels.npy", np.array([0, 1] * 5))
-        np.save(export_dir / "indices.npy", np.arange(10))
+        np.save(export_dir / "train_data.npy", np.random.randn(10, 40))
+        np.save(export_dir / "train_labels.npy", np.array([0, 1] * 5))
+        np.save(export_dir / "train_indices.npy", np.arange(10))
 
         # MicroWakeWord validation should pass
         mww_report = validate_microwakeword(export_dir)
         assert mww_report.valid is True
 
-        # OpenWakeWord validation should fail (missing X.npy, y.npy)
+        # OpenWakeWord validation should fail (missing X_train.npy, y_train.npy)
         oww_report = validate_openwakeword(export_dir)
         assert oww_report.valid is False
-        assert any("X.npy" in err for err in oww_report.errors)
+        assert any("X_train.npy" in err for err in oww_report.errors)

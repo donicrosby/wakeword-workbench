@@ -2388,16 +2388,30 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
 kokoro = [
     { name = "pykokoro" },
 ]
 piper = [
+    { name = "piper-tts" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "piper-tts" },
+    { name = "pykokoro" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+tts = [
+    { name = "piper-tts" },
+    { name = "pykokoro" },
+]
+tts-kokoro = [
+    { name = "pykokoro" },
+]
+tts-piper = [
     { name = "piper-tts" },
 ]
 
@@ -2406,20 +2420,32 @@ requires-dist = [
     { name = "audiomentations", specifier = ">=0.35,<1.0" },
     { name = "jellyfish", specifier = ">=1.0" },
     { name = "librosa", specifier = ">=0.10,<0.11" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9" },
     { name = "numpy", specifier = ">=1.24,<2.0" },
     { name = "piper-tts", marker = "extra == 'piper'", specifier = ">=1.2" },
     { name = "pykokoro", marker = "extra == 'kokoro'", specifier = ">=0.6" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
     { name = "scipy", specifier = ">=1.10,<1.15" },
     { name = "soundfile", specifier = ">=0.12" },
     { name = "structlog", specifier = ">=24.1" },
     { name = "typer", specifier = ">=0.12" },
 ]
-provides-extras = ["kokoro", "piper", "dev"]
+provides-extras = ["kokoro", "piper"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.9" },
+    { name = "piper-tts", specifier = ">=1.2" },
+    { name = "pykokoro", specifier = ">=0.6" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-cov", specifier = ">=5.0" },
+    { name = "ruff", specifier = ">=0.4" },
+]
+tts = [
+    { name = "piper-tts", specifier = ">=1.2" },
+    { name = "pykokoro", specifier = ">=0.6" },
+]
+tts-kokoro = [{ name = "pykokoro", specifier = ">=0.6" }]
+tts-piper = [{ name = "piper-tts", specifier = ">=1.2" }]
 
 [[package]]
 name = "wasabi"

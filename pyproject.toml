@@ -30,15 +30,28 @@ dependencies = [
     "jellyfish>=1.0",
 ]
 
-[project.optional-dependencies]
-kokoro = ["pykokoro>=0.6"]
-piper = ["piper-tts>=1.2"]
+[dependency-groups]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.4",
     "mypy>=1.9",
+    {include-group = "tts"},
 ]
+tts-kokoro = [
+    "pykokoro>=0.6"
+]
+tts-piper = [
+    "piper-tts>=1.2"
+]
+tts = [
+    {include-group = "tts-kokoro"},
+    {include-group = "tts-piper"}
+]
+
+[project.optional-dependencies]
+kokoro = ["pykokoro>=0.6"]
+piper = ["piper-tts>=1.2"]
 
 [project.scripts]
 wakeword-workbench = "wakeword_workbench.cli:main"

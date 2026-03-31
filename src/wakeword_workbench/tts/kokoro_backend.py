@@ -8,7 +8,7 @@ import numpy as np
 
 # Optional dependency - graceful fallback if not installed
 try:
-    from pykokoro import KokoroPipeline  # type: ignore[attr-defined]
+    from pykokoro import KokoroPipeline
 
     _PYKOKORO_AVAILABLE = True
 except ImportError:

@@ -349,7 +349,7 @@ Wave FINAL (Verification):
 
 ---
 
-- [ ] 3. Merge CLI Command
+- [x] 3. Merge CLI Command
 
   **What to do**:
   Add `@app.command(name="merge")` to `cli.py` with:

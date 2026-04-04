@@ -17,6 +17,7 @@ from wakeword_workbench.dataset.metadata import Manifest, ManifestEntry
 from wakeword_workbench.logging_config import configure_logging, get_logger
 from wakeword_workbench.mining.extractor import ExtractedClip, extract_false_positives
 from wakeword_workbench.mining.long_audio import process_long_audio
+from wakeword_workbench.mining.merge_back import MergeBackError, add_to_training
 from wakeword_workbench.mining.model_loader import ModelLoadError, load_onnx_model
 from wakeword_workbench.tts.cache import TTSCache
 
@@ -359,6 +360,115 @@ def mine_command(
 
     console.print(f"[bold green]✓[/bold green] Extracted {len(all_clips)} clips")
     console.print(f"[bold green]✓[/bold green] Saved manifest to {manifest_path}")
+    raise typer.Exit(code=EXIT_SUCCESS)
+
+
+@app.command(name="merge")
+def merge_command(
+    source: Annotated[
+        Path,
+        typer.Option(
+            "--source",
+            "-s",
+            help="Path to source manifest (new negatives to merge)",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    target: Annotated[
+        Path,
+        typer.Option(
+            "--target",
+            "-t",
+            help="Path to target training manifest",
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    backup: bool = typer.Option(
+        False,
+        "--backup",
+        "-b",
+        help="Create timestamped backup of target before merging",
+    ),
+) -> None:
+    """Merge mined hard negatives into training dataset manifests.
+
+    Takes a manifest of newly mined hard negatives and appends them to an
+    existing training manifest. Creates a backup of the target manifest
+    before modification if --backup is specified.
+    """
+    console.print(
+        Panel.fit(
+            "[bold]WakeWord Workbench[/bold] - Merging hard negatives",
+            border_style="cyan",
+        )
+    )
+
+    if not str(source).endswith(".jsonl"):
+        console.print(f"[bold red]Error:[/bold red] Source must be a JSONL file: {source}")
+        raise typer.Exit(code=EXIT_CONFIG_ERROR)
+
+    if not str(target).endswith(".jsonl"):
+        console.print(f"[bold red]Error:[/bold red] Target must be a JSONL file: {target}")
+        raise typer.Exit(code=EXIT_CONFIG_ERROR)
+
+    if not target.exists():
+        console.print(f"[bold red]Error:[/bold red] Target manifest not found: {target}")
+        raise typer.Exit(code=EXIT_CONFIG_ERROR)
+
+    log.info(
+        "starting-merge",
+        source=str(source),
+        target=str(target),
+        backup=backup,
+    )
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[cyan]Merging manifests...", total=None)
+
+        try:
+            result = add_to_training(
+                new_negatives_manifest=source,
+                training_manifest=target,
+                backup=backup,
+            )
+            progress.update(task, description="[green]Merge completed")
+        except MergeBackError as e:
+            console.print(f"[bold red]Error:[/bold red] {e}")
+            log.error("merge-failed", error=str(e))
+            raise typer.Exit(code=EXIT_ERROR) from None
+
+    console.print("\n[bold]Merge Results:[/bold]")
+    console.print(f"  Source entries   : {result.added_count}")
+    console.print(f"  Total in target  : {result.total_count}")
+
+    if result.backup_path:
+        console.print(f"  Backup created   : {result.backup_path}")
+
+    if result.errors:
+        console.print(f"\n[yellow]Warnings ({len(result.errors)}):[/yellow]")
+        for error in result.errors[:5]:
+            console.print(f"  • {error}")
+        if len(result.errors) > 5:
+            console.print(f"  ... and {len(result.errors) - 5} more")
+
+    log.info(
+        "merge-complete",
+        added=result.added_count,
+        total=result.total_count,
+        backup=str(result.backup_path) if result.backup_path else None,
+        warnings=len(result.errors),
+    )
+
+    console.print("\n[bold green]✓[/bold green] Merge completed successfully")
     raise typer.Exit(code=EXIT_SUCCESS)
 
 

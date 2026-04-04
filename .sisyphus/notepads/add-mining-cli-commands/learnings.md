@@ -1,70 +1,63 @@
 
 
-## Task: Add mine command for hard negative mining
+## Task: Add merge command for merging hard negatives
 
 ### Key Findings
 
-1. **Pathlib.glob() with Absolute Paths**
-   - `Path().glob()` doesn't support absolute paths in the pattern
-   - Must split the path: use `path.parent.glob(path.name)` for absolute paths
-   - For relative paths, use `Path().glob(pattern)` directly
+1. **Typer File Validation with exists=True**
+   - When using `exists=True` in `typer.Option()`, Typer validates the file exists before our code runs
+   - For the target file (which we don't want to require to exist), don't use `exists=True`
+   - This allows us to show custom error messages
 
-2. **Typer Built-in Validation**
-   - Using `exists=True` in `typer.Option()` causes Typer to validate before our code runs
-   - This means we can't show custom error messages for missing files on those options
-   - The exit code is still correct (2 = config error)
+2. **Exit Code Strategy**
+   - 0 = success (entries merged, manifest saved)
+   - 1 = error (merge operation failed, backup failed, save failed)
+   - 2 = config error (invalid file extension, target not found)
 
-3. **Wildcard Support Implementation**
+3. **MergeResult Structure**
+   - `added_count`: number of entries added from source
+   - `total_count`: total entries in target after merge
+   - `backup_path`: path to backup file if --backup was specified
+   - `errors`: list of warnings (duplicates, missing files, etc.)
+
+4. **Testing Pattern for Merge Command**
+   - Mock `add_to_training()` from mining.merge_back module
+   - Create `MagicMock()` for `MergeResult` with required attributes
+   - Test warning truncation (show first 5, then "... and N more")
+   - Test both with and without --backup flag
+
+5. **CLI Command Pattern**
    ```python
-   audio_path_pattern = Path(audio)
-   if audio_path_pattern.is_absolute():
-       audio_files = list(audio_path_pattern.parent.glob(audio_path_pattern.name))
-   else:
-       audio_files = list(Path().glob(audio))
+   @app.command(name="merge")
+   def merge_command(
+       source: Annotated[Path, typer.Option(..., exists=True)],
+       target: Annotated[Path, typer.Option(...)],  # No exists=True
+       backup: bool = typer.Option(False, "--backup"),
+   ) -> None:
    ```
 
-4. **Mocking Strategy for Tests**
-   - Mock `load_onnx_model` to return a callable mock
-   - Mock `process_long_audio` to return list of `WindowPrediction`-like mocks
-   - Mock `extract_false_positives` to return list of `ExtractedClip`-like mocks
-   - Need `MockExtractedClip` class since `ExtractedClip` is a dataclass with `relative_to()` method
+6. **Statistics Display**
+   - Source entries: result.added_count
+   - Total in target: result.total_count
+   - Backup path (if created): result.backup_path
+   - Warnings count: len(result.errors)
 
-5. **Manifest Entry Structure**
-   - label=0 for hard negatives
-   - text="" (empty) for negatives
-   - duration_ms calculated from clip.duration * 1000
-   - metadata includes source, timestamp, prediction, threshold
-
-6. **Exit Code Consistency**
-   - 0 = success (extracted clips, saved manifest)
-   - 1 = error (model load failed, processing error, manifest save failed)
-   - 2 = config error (threshold out of range, no files match, missing model)
-
-### Code Pattern for CLI Commands
+### Code Pattern for merge command
 
 ```python
-@app.command(name="mine")
-def mine_command(
-    model: Annotated[Path, typer.Option(...)],
-    audio: Annotated[str, typer.Option(...)],
-    output: Annotated[Path, typer.Option(...)],
-    threshold: float = typer.Option(0.7, ...),
-) -> None:
-    """Docstring appears in --help output."""
-    # 1. Print panel header
-    # 2. Validate inputs
-    # 3. Expand wildcards
-    # 4. Create output directory
-    # 5. Use Progress spinner during processing
-    # 6. Collect results
-    # 7. Save manifest
-    # 8. Print summary and exit with appropriate code
+with Progress(
+    SpinnerColumn(),
+    TextColumn("[progress.description]{task.description}"),
+    console=console,
+) as progress:
+    task = progress.add_task("[cyan]Merging manifests...", total=None)
+    result = add_to_training(...)
+    progress.update(task, description="[green]Merge completed")
 ```
 
-### Testing Patterns
+### Testing Lessons
 
-- Use `CliRunner` from `typer.testing`
-- Mock external dependencies at the module level (`@patch("wakeword_workbench.cli.xxx")`)
-- Create mock classes for dataclasses that need methods like `relative_to()`
-- Test both success and error paths
-- Verify manifest content separately from CLI output
+- Mocking `add_to_training` is simpler than mocking the underlying Manifest operations
+- Test warning truncation to verify UX behavior
+- Test edge cases: no entries added, many warnings, backup creation
+- The manifest extensions (.jsonl) validation is done before calling add_to_training

@@ -455,7 +455,7 @@ Wave FINAL (Verification):
 
 ---
 
-- [ ] 4. Integration Tests
+- [x] 4. Integration Tests
 
   **What to do**:
   Create `tests/test_cli_mining.py` with end-to-end tests:

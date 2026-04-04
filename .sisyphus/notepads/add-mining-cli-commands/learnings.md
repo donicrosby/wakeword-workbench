@@ -61,3 +61,34 @@ with Progress(
 - Test warning truncation to verify UX behavior
 - Test edge cases: no entries added, many warnings, backup creation
 - The manifest extensions (.jsonl) validation is done before calling add_to_training
+
+## Task: Integration Tests for Mine and Merge CLI Commands
+
+### Key Findings
+
+1. **Integration Test Strategy**
+   - Test complete workflow: mine → merge in sequence
+   - Mock at CLI level: `load_onnx_model`, `process_long_audio`, `extract_false_positives`, `add_to_training`
+   - Use `MockExtractedClip` helper class for clip mocking
+
+2. **Test Organization**
+   - `TestMineMergeWorkflow`: Happy path tests for mine→merge sequence
+   - `TestErrorPropagation`: Error handling between commands
+   - `TestWorkflowEdgeCases`: Threshold variations, warnings, edge cases
+
+3. **Common Pitfalls**
+   - `clip_path` in mock must use `output_dir` parameter, not hardcoded path
+   - When mine fails, manifest is not created - merge should not be attempted
+   - Invalid JSON in manifest is reported as warning (exit code 0), not error
+   - Exit code 1 = operational error (model load failure), 2 = config error (validation failure)
+
+4. **Mock Patterns for Integration**
+   - Always mock `load_onnx_model` to avoid actual ONNX runtime
+   - `process_long_audio` should return list of WindowPrediction mocks
+   - `extract_false_positives` returns list of ExtractedClip objects
+   - `add_to_training` returns MergeResult with `added_count`, `total_count`, `backup_path`, `errors`
+
+5. **Verification Points**
+   - Verify manifest created by mine: `output_dir / "manifest.jsonl".exists()`
+   - Verify manifest content: `Manifest.load(path)` and check entries
+   - Verify merge called with correct paths: `mock_add.assert_called_once_with(...)`

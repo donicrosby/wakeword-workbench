@@ -13,7 +13,11 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from wakeword_workbench import __version__
 from wakeword_workbench.config import ConfigError, load_config
+from wakeword_workbench.dataset.metadata import Manifest, ManifestEntry
 from wakeword_workbench.logging_config import configure_logging, get_logger
+from wakeword_workbench.mining.extractor import ExtractedClip, extract_false_positives
+from wakeword_workbench.mining.long_audio import process_long_audio
+from wakeword_workbench.mining.model_loader import ModelLoadError, load_onnx_model
 from wakeword_workbench.tts.cache import TTSCache
 
 # Exit codes
@@ -179,6 +183,182 @@ def cache_clear_command(
 
     cache.clear()
     console.print("[bold green]✓[/bold green] Cache cleared successfully")
+    raise typer.Exit(code=EXIT_SUCCESS)
+
+
+@app.command(name="mine")
+def mine_command(
+    model: Annotated[
+        Path,
+        typer.Option(
+            "--model",
+            "-m",
+            help="Path to ONNX model file",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    audio: Annotated[
+        str,
+        typer.Option(
+            "--audio",
+            "-a",
+            help="Path to audio file(s). Supports wildcards (e.g., '*.wav')",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Output directory for extracted clips",
+            file_okay=False,
+            dir_okay=True,
+        ),
+    ],
+    threshold: float = typer.Option(
+        0.7,
+        "--threshold",
+        "-t",
+        help="Confidence threshold for extraction (0.0-1.0)",
+        min=0.0,
+        max=1.0,
+    ),
+) -> None:
+    """Mine hard negatives from long audio recordings.
+
+    Process audio files to find false positives (segments where the model
+    predicts the wake word with high confidence but no wake word is present).
+    Extracted clips are saved for use as hard negative training samples.
+    """
+    console.print(
+        Panel.fit(
+            "[bold]WakeWord Workbench[/bold] - Mining hard negatives",
+            border_style="cyan",
+        )
+    )
+
+    # Validate threshold range (typer handles basic min/max but we ensure ConfigError)
+    if not 0.0 <= threshold <= 1.0:
+        console.print(
+            f"[bold red]Error:[/bold red] Threshold must be between 0.0 and 1.0, got {threshold}"
+        )
+        raise typer.Exit(code=EXIT_CONFIG_ERROR)
+
+    # Expand wildcards in audio path
+    audio_path_pattern = Path(audio)
+    if audio_path_pattern.is_absolute():
+        # For absolute paths, glob from the parent directory
+        audio_files = list(audio_path_pattern.parent.glob(audio_path_pattern.name))
+    else:
+        # For relative paths, use current directory
+        audio_files = list(Path().glob(audio))
+    if not audio_files:
+        console.print(f"[bold red]Error:[/bold red] No audio files found matching: {audio}")
+        raise typer.Exit(code=EXIT_CONFIG_ERROR)
+
+    # Create output directory if needed
+    try:
+        output.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        console.print(f"[bold red]Error:[/bold red] Failed to create output directory: {e}")
+        raise typer.Exit(code=EXIT_ERROR) from None
+
+    log.info(
+        "starting-mining",
+        model=str(model),
+        audio_pattern=audio,
+        audio_files=len(audio_files),
+        output=str(output),
+        threshold=threshold,
+    )
+
+    # Load ONNX model
+    try:
+        model_fn = load_onnx_model(model)
+    except ModelLoadError as e:
+        console.print(f"[bold red]Error:[/bold red] Failed to load model: {e}")
+        raise typer.Exit(code=EXIT_ERROR) from None
+
+    all_clips: list[ExtractedClip] = []
+
+    # Process each audio file with progress indication
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[cyan]Processing audio files...", total=len(audio_files))
+
+        for audio_file in audio_files:
+            progress.update(task, description=f"[cyan]Processing {audio_file.name}...")
+
+            try:
+                # Process long audio to get predictions
+                predictions = process_long_audio(
+                    model=model_fn,
+                    audio_path=audio_file,
+                )
+
+                # Extract false positives above threshold
+                clips = extract_false_positives(
+                    predictions=predictions,
+                    audio_path=audio_file,
+                    threshold=threshold,
+                    output_dir=output,
+                )
+
+                all_clips.extend(clips)
+                log.info(
+                    "audio-processing-complete",
+                    file=str(audio_file),
+                    predictions=len(predictions),
+                    clips_extracted=len(clips),
+                )
+
+            except (FileNotFoundError, NotADirectoryError, ValueError) as e:
+                console.print(f"[bold red]Error:[/bold red] Failed to process {audio_file}: {e}")
+                raise typer.Exit(code=EXIT_ERROR) from None
+
+            progress.advance(task)
+
+    # Create manifest with all extracted clips
+    manifest = Manifest()
+    for clip in all_clips:
+        entry = ManifestEntry(
+            path=str(clip.clip_path.relative_to(output)),
+            label=0,  # Hard negatives
+            text="",  # Empty text for negatives
+            voice=None,
+            duration_ms=int(clip.duration * 1000),
+            sample_rate=16000,
+            metadata={
+                "source": str(clip.original_path),
+                "timestamp": clip.timestamp,
+                "prediction": clip.prediction,
+                "threshold": clip.threshold,
+            },
+        )
+        manifest.add(entry)
+
+    # Save manifest
+    manifest_path = output / "manifest.jsonl"
+    try:
+        manifest.save(manifest_path)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] Failed to save manifest: {e}")
+        raise typer.Exit(code=EXIT_ERROR) from None
+
+    log.info(
+        "mining-complete",
+        total_clips=len(all_clips),
+        manifest=str(manifest_path),
+    )
+
+    console.print(f"[bold green]✓[/bold green] Extracted {len(all_clips)} clips")
+    console.print(f"[bold green]✓[/bold green] Saved manifest to {manifest_path}")
     raise typer.Exit(code=EXIT_SUCCESS)
 
 

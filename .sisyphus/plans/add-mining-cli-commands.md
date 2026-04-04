@@ -240,7 +240,7 @@ Wave FINAL (Verification):
 
 ---
 
-- [ ] 2. Mine CLI Command
+- [x] 2. Mine CLI Command
 
   **What to do**:
   Add `@app.command(name="mine")` to `cli.py` with:

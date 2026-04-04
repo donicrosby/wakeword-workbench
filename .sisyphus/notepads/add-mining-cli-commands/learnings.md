@@ -1,40 +1,70 @@
-# Learnings from add-mining-model-loader
 
-## Task: Create ONNX model loader for wake word detection
+
+## Task: Add mine command for hard negative mining
 
 ### Key Findings
 
-1. **Optional Dependencies and LSP Diagnostics**
-   - onnxruntime is an optional dependency (gracefully handled with `ModelLoadError`)
-   - LSP errors about unresolved imports are expected and should be ignored
-   - Used `_check_onnxruntime_available()` pattern for graceful degradation
+1. **Pathlib.glob() with Absolute Paths**
+   - `Path().glob()` doesn't support absolute paths in the pattern
+   - Must split the path: use `path.parent.glob(path.name)` for absolute paths
+   - For relative paths, use `Path().glob(pattern)` directly
 
-2. **Testing with Optional Dependencies**
-   - When onnxruntime isn't installed, mock it using `_check_onnxruntime_available` patch
-   - Custom `MockInferenceSession` class needed to properly mock onnxruntime's `InferenceSession`
-   - MagicMock alone wasn't sufficient - needed explicit mock classes for proper mocking
+2. **Typer Built-in Validation**
+   - Using `exists=True` in `typer.Option()` causes Typer to validate before our code runs
+   - This means we can't show custom error messages for missing files on those options
+   - The exit code is still correct (2 = config error)
 
-3. **Mocking onnxruntime InferenceSession**
-   - `session.get_inputs()` and `session.get_outputs()` return lists of I/O nodes
-   - `session.run()` is called with positional args: `([output_name], {input_name: audio})`
-   - Need to mock both the method signatures and side effects
+3. **Wildcard Support Implementation**
+   ```python
+   audio_path_pattern = Path(audio)
+   if audio_path_pattern.is_absolute():
+       audio_files = list(audio_path_pattern.parent.glob(audio_path_pattern.name))
+   else:
+       audio_files = list(Path().glob(audio))
+   ```
 
-4. **Function Signature Pattern**
-   - `load_onnx_model(path: Path) -> Callable[[np.ndarray], float]`
-   - Model callable takes audio samples and returns confidence score
-   - Compatible with `process_long_audio()` in `long_audio.py`
+4. **Mocking Strategy for Tests**
+   - Mock `load_onnx_model` to return a callable mock
+   - Mock `process_long_audio` to return list of `WindowPrediction`-like mocks
+   - Mock `extract_false_positives` to return list of `ExtractedClip`-like mocks
+   - Need `MockExtractedClip` class since `ExtractedClip` is a dataclass with `relative_to()` method
 
-5. **Audio Array Handling**
-   - Automatically adds batch dimension for 1D audio arrays
-   - Converts non-float32 arrays to float32
-   - Averages multiple output scores if present
+5. **Manifest Entry Structure**
+   - label=0 for hard negatives
+   - text="" (empty) for negatives
+   - duration_ms calculated from clip.duration * 1000
+   - metadata includes source, timestamp, prediction, threshold
 
-6. **Error Handling**
-   - Custom `ModelLoadError` exception for all model loading failures
-   - Clear error messages with installation hints
-   - Proper exception chaining with `from e` and `from None`
+6. **Exit Code Consistency**
+   - 0 = success (extracted clips, saved manifest)
+   - 1 = error (model load failed, processing error, manifest save failed)
+   - 2 = config error (threshold out of range, no files match, missing model)
 
-### Code Style Notes
-- Follow existing project patterns: Google-style docstrings, structlog for logging
-- All lint errors fixed: mutable defaults, exception chaining, import sorting
-- Used `Any` return type for `_check_onnxruntime_available()` to avoid TYPE_CHECKING complexity
+### Code Pattern for CLI Commands
+
+```python
+@app.command(name="mine")
+def mine_command(
+    model: Annotated[Path, typer.Option(...)],
+    audio: Annotated[str, typer.Option(...)],
+    output: Annotated[Path, typer.Option(...)],
+    threshold: float = typer.Option(0.7, ...),
+) -> None:
+    """Docstring appears in --help output."""
+    # 1. Print panel header
+    # 2. Validate inputs
+    # 3. Expand wildcards
+    # 4. Create output directory
+    # 5. Use Progress spinner during processing
+    # 6. Collect results
+    # 7. Save manifest
+    # 8. Print summary and exit with appropriate code
+```
+
+### Testing Patterns
+
+- Use `CliRunner` from `typer.testing`
+- Mock external dependencies at the module level (`@patch("wakeword_workbench.cli.xxx")`)
+- Create mock classes for dataclasses that need methods like `relative_to()`
+- Test both success and error paths
+- Verify manifest content separately from CLI output

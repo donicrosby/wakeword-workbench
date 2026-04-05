@@ -1,17 +1,13 @@
 {
-  "active_plan": "/home/doni/projects/micro_wake_word_trainer/micro-wakerword-workbench/.sisyphus/plans/fix-verification-issues.md",
-  "started_at": "2026-03-31T02:47:36.191Z",
+  "active_plan": "/home/doni/.local/share/opencode/worktree/global/curious-moon/.sisyphus/plans/add-mining-cli-commands.md",
+  "started_at": "2026-04-04T14:56:50.260Z",
   "session_ids": [
-    "ses_2be9a05c1ffeGI9YWUXLnViIAs",
-    "ses_2be3317a8ffexOJVObdZhSaAW2",
-    "ses_2be33497bffe2HK1uSgFlPoJT6",
-    "ses_2be332e38ffe5QtOJK6qsrd1TE",
-    "ses_2be25db17ffeBxAOOyAAXlkaCe",
-    "ses_2be1c91d5ffeQJl2Q3J2p43ETL",
-    "ses_2be172537ffeJ5TzSqAtWlt2u4",
-    "ses_2be1282ffffeFB5VW3m3ubkVnI",
-    "ses_2be12228dffemNRvalGV7crYee"
+    "ses_2b675b79bffeokIA7w1gOpm1hw",
+    "ses_2a6fc62f7ffetTwKm03U80MrBt",
+    "ses_2a6f5c49fffe0ea4x8yI2YUMUZ",
+    "ses_2a6eee4e2ffecvyYNpDt9wH3BH",
+    "ses_2a6e9db7fffedpQoKEFZD7VAYJ"
   ],
-  "plan_name": "fix-verification-issues",
+  "plan_name": "add-mining-cli-commands",
   "agent": "atlas"
 }

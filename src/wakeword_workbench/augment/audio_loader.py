@@ -47,31 +47,28 @@ def load_audio(path: Path | str, target_sr: int = 16000) -> tuple[np.ndarray, Au
         raise AudioLoadError(f"Audio file not found: {path}")
 
     try:
-        # Load audio with librosa (handles WAV, FLAC, OGG, MP3, and more)
-        # sr=None preserves original sample rate, then we resample
-        audio, original_sr = librosa.load(path, sr=None, mono=False)
+        info = sf.info(path)
+        audio, original_sr = sf.read(path, always_2d=False, dtype="float32")
+        audio = np.asarray(audio, dtype=np.float32)
+        channels = info.channels
     except Exception as e:
         raise AudioLoadError(f"Failed to load audio file '{path}': {e}") from e
 
-    # Get metadata for channels
-    try:
-        info = sf.info(path)
-        channels = info.channels
-    except Exception:
-        # Fallback: librosa loads mono as 1D, stereo as 2D
-        channels = 1 if audio.ndim == 1 else audio.ndim
+    if audio.ndim == 0:
+        raise AudioLoadError(f"Failed to load audio file '{path}': no audio samples found")
 
     # Convert to mono if stereo (common for wake word processing)
     if audio.ndim > 1:
-        audio = librosa.to_mono(audio)
+        audio = np.mean(audio, axis=1, dtype=np.float32)
         channels = 1
 
     # Ensure float32
-    audio = audio.astype(np.float32)
+    audio = np.asarray(audio, dtype=np.float32)
 
     # Resample if needed
     if original_sr != target_sr:
         audio = librosa.resample(audio, orig_sr=original_sr, target_sr=target_sr)
+        audio = audio.astype(np.float32)
 
     # Calculate duration
     duration = len(audio) / target_sr

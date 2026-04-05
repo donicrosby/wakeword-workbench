@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 import numpy as np
+import soundfile as sf
 from numpy.typing import NDArray
 
 from wakeword_workbench.logging_config import get_logger
@@ -93,17 +94,34 @@ class AddNoise:
 
     def _load_noise_file(self, path: Path, target_length: int, sr: int) -> NDArray[np.float32]:
         """Load a noise file and adjust to match target length."""
-        import librosa as _librosa
+        try:
+            noise, noise_sr = sf.read(path, always_2d=False, dtype="float32")
+        except Exception as e:
+            raise ValueError(f"Failed to load noise file {path}: {e}") from e
 
-        noise, _noise_sr = _librosa.load(path, sr=sr, mono=True)
+        noise = np.asarray(noise, dtype=np.float32)
+        if noise.ndim == 0:
+            raise ValueError(f"Noise file {path} is empty")
 
-        if len(noise) == 0:
+        if noise.ndim > 1:
+            noise = np.mean(noise, axis=1, dtype=np.float32)
+
+        noise = np.asarray(noise, dtype=np.float32).reshape(-1)
+
+        if noise_sr != sr:
+            import librosa as _librosa
+
+            noise = _librosa.resample(noise, orig_sr=noise_sr, target_sr=sr)
+            noise = np.asarray(noise, dtype=np.float32)
+
+        if noise.size == 0:
             raise ValueError(f"Noise file {path} is empty")
 
         # Handle length mismatch
-        if len(noise) < target_length:
+        current_length = noise.shape[0]
+        if current_length < target_length:
             # Tile/loop the noise to cover the audio
-            repeats = int(np.ceil(target_length / len(noise)))
+            repeats = int(np.ceil(target_length / current_length))
             noise = np.tile(noise, repeats)
 
         # Truncate to exact length
@@ -217,7 +235,7 @@ class AddColoredNoise:
             from scipy.signal import lfilter
 
             pink = lfilter(b, a, white)
-            return pink.astype(np.float32)
+            return np.asarray(pink, dtype=np.float32)
         except ImportError:
             # Fallback: simple IIR approximation
             pink = np.zeros(length, dtype=np.float32)

@@ -1,0 +1,147 @@
+# openWakeWord Fine-tuning Configuration
+# =========================================
+# Purpose: Adapt pre-trained model to new voices or domains
+# Expected runtime: 15-20 minutes
+# Use for: Adding new TTS voices, domain adaptation, targeted improvements
+#
+# Prerequisites:
+# - Pre-trained model checkpoint (.onnx file)
+# - Small dataset of new samples (1,000-5,000)
+# - Optional: Hard negatives from previous model's failures
+#
+# Important: Lower learning rates and fewer steps preserve pre-trained weights
+# Note: For full fine-tuning workflow, see openWakeWord training_models.ipynb
+
+model_name: "finetuned_model"
+target_phrase: ["hey vera"]
+
+# Smaller fine-tuning dataset
+n_samples: 3000      # New samples only (base model provides foundation)
+n_samples_val: 500
+
+output_dir: "./openwakeword_finetune"
+
+# =========================================
+# FEATURE DATA FILES
+# =========================================
+# Fine-tuning uses new data + original data for preservation
+
+feature_data_files:
+  # New positive samples (new voices, accents)
+  positive: "./openwakeword_finetune/features/new_positive_train.npy"
+
+  # Original positives (preserve existing wake word coverage)
+  # Comment out if starting from scratch
+  original_positive: "./openwakeword_production/features/positive_train.npy"
+
+  # Targeted negatives (new failure cases to address)
+  targeted_negative: "./openwakeword_finetune/features/targeted_negative_train.npy"
+
+  # Reduced external corpus (still important for baseline)
+  ACAV100M_sample: "./data/ACAV100M_features.npy"
+
+# =========================================
+# BATCH COMPOSITION
+# =========================================
+# Balanced to not overfit to new data
+
+batch_n_per_class:
+  positive: 32        # New positives
+  original_positive: 16  # Preserve original coverage
+  targeted_negative: 64  # Address specific failures
+  ACAV100M_sample: 256  # Maintain baseline
+
+# =========================================
+# TRAINING PARAMETERS
+# =========================================
+# Conservative settings for fine-tuning
+
+model_type: "dnn"
+
+# Match base model architecture
+layer_size: 64
+
+# Reduced steps for fine-tuning
+steps: 10000  # Shorter than production
+
+# Conservative negative weight
+max_negative_weight: 800  # Lower than production to avoid overcorrection
+
+# Target false positives per hour
+target_false_positives_per_hour: 0.3  # Slightly relaxed - maintain baseline
+
+# =========================================
+# AUGMENTATION SETTINGS
+# =========================================
+# Light augmentation - don't introduce too much variation
+
+augmentation_batch_size: 16
+augmentation_rounds: 1
+
+# =========================================
+# TTS SETTINGS
+# =========================================
+
+tts_batch_size: 50
+
+# =========================================
+# NEGATIVE PHRASES
+# =========================================
+# New confusion phrases discovered in fine-tuning
+# Focus on failure cases from base model
+
+custom_negative_phrases:
+  # Include original phrases
+  - "hey veronica"
+  - "hey very"
+  # Add new failures
+  - "hey veranda"
+  - "hey vera's phone"
+  # Domain-specific phrases (customize for your use case)
+  - "hey vera play music"
+  - "hey vera set alarm"
+
+# =========================================
+# EXTERNAL DATA
+# =========================================
+
+# Optional: Use base model's FP validation corpus
+# This helps maintain similar false-positive behavior
+# false_positive_validation_data_path: "./openwakeword_production/features/validation_fp.npy"
+
+# =========================================
+# AUGMENTATION RESOURCES
+# =========================================
+
+rir_paths: "./mit_rirs"
+background_paths: "./backgrounds"
+background_paths_duplication_rate: [1]
+
+# =========================================
+# FINE-TUNING STRATEGY NOTES
+# =========================================
+#
+# For best results with openWakeWord fine-tuning:
+#
+# 1. STARTING POINT:
+#    - Use an ONNX model from production training
+#    - Or download a pre-trained model from openWakeWord
+#
+# 2. DATA BALANCE:
+#    - New positives: Should match the voices/accents you want to add
+#    - Original positives: Include samples from base model's coverage
+#    - Targeted negatives: Focus on failures you've observed
+#
+# 3. TRAINING:
+#    - The 3-stage pipeline will still run
+#    - But with fewer steps, it converges faster
+#    - Negative weight increase is gentler
+#
+# 4. EVALUATION:
+#    - Test on held-out data from both old and new distributions
+#    - Check that original FP/hr hasn't degraded significantly
+#    - Verify new samples are recognized
+#
+# 5. MERGING (optional advanced technique):
+#    - After fine-tuning, you can average checkpoints from base + fine-tuned
+#    - This preserves both old and new capabilities

@@ -1,0 +1,136 @@
+# openWakeWord Quick Test Configuration
+# =========================================
+# Purpose: Rapid workflow testing with small synthetic dataset
+# Expected runtime: 5-15 minutes
+# Use for: Pipeline validation, testing export formats
+#
+# Prerequisites:
+# - Run wakeword-workbench to generate .wav clips
+# - Convert clips to embedded features (16x96) using openwakeword.utils.AudioFeatures
+# - Update feature_data_files paths to point to your .npy files
+#
+# Note: openWakeWord expects feature files shaped (N, 16, 96) by default
+# where 16 frames ≈ 2 seconds of audio at 16kHz
+
+# Model naming
+model_name: "quick_test_model"
+target_phrase: ["hey vera"]  # Update to your wake word
+
+# Sample counts (small for quick testing)
+n_samples: 500      # Total synthetic samples for training
+n_samples_val: 100  # Validation samples
+
+# Output directory
+output_dir: "./openwakeword_quick_test"
+
+# =========================================
+# FEATURE DATA FILES
+# =========================================
+# Dictionary mapping source names to feature .npy files
+# Each file must be shaped (N, T, 96) where T varies by clip duration
+#
+# REQUIRED: Generate these from your .wav clips using:
+#   from openwakeword.utils import AudioFeatures
+#   features = AudioFeatures().embed_clips(audio_array, batch_size=256)
+#   np.save("positive_features_train.npy", features)
+#
+# Source naming conventions:
+# - "positive": Wake word samples (label=1)
+# - "adversarial_negative": Confusion phrase samples (label=0)
+# - Any other key: Generic negative samples (label=0)
+
+feature_data_files:
+  # Positive wake word features
+  positive: "./openwakeword_quick_test/features/positive_train.npy"
+
+  # Adversarial/confusion phrase features
+  adversarial_negative: "./openwakeword_quick_test/features/adversarial_negative_train.npy"
+
+  # Generic negative features (optional for quick test)
+  # Uncomment if you have external negative corpus
+  # generic_negative: "./data/negatives/generic_negative_features.npy"
+
+# =========================================
+# BATCH COMPOSITION
+# =========================================
+# Controls how samples are drawn per training batch.
+# Format: {source_name: count_per_batch}
+
+batch_n_per_class:
+  positive: 32       # Keep positive count manageable
+  adversarial_negative: 64
+  # generic_negative: 512  # Uncomment if using generic negatives
+
+# =========================================
+# TRAINING PARAMETERS
+# =========================================
+
+# Model type: "dnn" (feedforward) or "rnn" (recurrent)
+model_type: "dnn"
+
+# Hidden layer size
+layer_size: 32  # Smaller for quick testing
+
+# Training steps (reduced for quick test)
+steps: 5000
+
+# Maximum negative sample weight (controls false positive penalty)
+# Higher = model more aggressively avoids false positives
+max_negative_weight: 500  # Lower cap for quick testing
+
+# Target false positives per hour (FP/hr)
+# Training will try to achieve this in later stages
+target_false_positives_per_hour: 0.5  # Relaxed for testing
+
+# =========================================
+# AUGMENTATION SETTINGS
+# =========================================
+# These are passed to the openWakeWord training pipeline
+
+augmentation_batch_size: 16  # Smaller for quick test
+augmentation_rounds: 1        # Single augmentation pass
+
+# =========================================
+# TTS SETTINGS (for generating positives)
+# =========================================
+# Used if openWakeWord CLI generates clips
+
+tts_batch_size: 25  # Smaller batches for quick testing
+
+# Piper sample generator path (if using Piper TTS)
+# piper_sample_generator_path: "./piper-sample-generator"
+
+# =========================================
+# NEGATIVE PHRASES (for adversarial negatives)
+# =========================================
+# Custom phrases that sound similar to wake word
+# Add phrases that caused false positives in testing
+
+custom_negative_phrases:
+  - "hey veronica"
+  - "hey vera's"
+  - "they're very"
+  - "hey very"
+
+# =========================================
+# EXTERNAL DATA (optional)
+# =========================================
+# Large negative corpus for better generalization
+# Uncomment and provide path if available
+
+# feature_data_files:
+#   ACAV100M_sample: "./features.npy"  # Example external corpus
+# batch_n_per_class:
+#   ACAV100M_sample: 256  # Large negative contribution per batch
+
+# False positive validation data (for FP/hr metric)
+# false_positive_validation_data_path: "./validation_features.npy"
+
+# =========================================
+# BACKGROUND/AUGMENTATION PATHS
+# =========================================
+# Uncomment if you have augmentation resources
+
+# rir_paths: "./mit_rirs"           # Room impulse responses
+# background_paths: "./backgrounds"  # Background noise clips
+# background_paths_duplication_rate: [1]

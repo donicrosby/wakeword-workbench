@@ -1,0 +1,136 @@
+# microWakeWord Production Configuration
+# =========================================
+# Purpose: High-quality model training with comprehensive dataset
+# Expected runtime: 30+ minutes
+# Use for: Production deployment, final model training
+#
+# Prerequisites:
+# - Large dataset (10,000+ positive samples recommended)
+# - Diverse negative samples including hard negatives
+# - Optional: Ambient/background validation data
+# - Sufficient GPU memory (batch_size 128+)
+
+# Training directory containing split subdirectories (training/, validation/, testing/)
+train_dir: "./output/production/training_data"
+
+# Duration of audio clips in milliseconds
+clip_duration_ms: 1000
+
+# Window step for spectrogram generation (ms)
+window_step_ms: 10
+
+# Evaluation interval (steps between validation checks)
+eval_step_interval: 1000
+
+# =========================================
+# FEATURE SETS
+# =========================================
+# Production typically uses multiple negative sources with varying weights.
+# This improves robustness against different false positive triggers.
+
+features:
+  # Primary positive wake word samples
+  - features_dir: "./output/production/training_data/wakeword_mmap"
+    truth: true
+    sampling_weight: 2.0
+    penalty_weight: 1.0
+    truncation_strategy: "truncate_start"
+    type: "mmap"
+
+  # Generic negative samples (background speech, music, noise)
+  - features_dir: "./data/negatives/speech_negatives_mmap"
+    truth: false
+    sampling_weight: 15.0    # Heavy negative sampling
+    penalty_weight: 1.0
+    truncation_strategy: "truncate_start"
+    type: "mmap"
+
+  # Adversarial/hard negative samples (confusion phrases)
+  - features_dir: "./data/negatives/adversarial_negatives_mmap"
+    truth: false
+    sampling_weight: 5.0     # Important for FP rejection
+    penalty_weight: 2.0      # Higher penalty for hard negatives
+    truncation_strategy: "truncate_start"
+    type: "mmap"
+
+  # Environmental noise negatives
+  - features_dir: "./data/negatives/environmental_negatives_mmap"
+    truth: false
+    sampling_weight: 8.0
+    penalty_weight: 1.0
+    truncation_strategy: "truncate_start"
+    type: "mmap"
+
+  # Validation ambient samples (uncomment if available)
+  # - features_dir: "./data/validation_ambient_mmap"
+  #   truth: false
+  #   sampling_weight: 3.0
+  #   penalty_weight: 0.5
+  #   truncation_strategy: "truncate_start"
+  #   type: "mmap"
+
+# =========================================
+# TRAINING SCHEDULE
+# =========================================
+# Full training with learning rate schedule
+
+training_steps: [50000]  # Standard production length
+
+# Learning rate schedule: warmup then decay
+learning_rates: [0.001]  # Auto-repeated for step count
+
+batch_size: 128  # Optimal for most GPUs
+
+# =========================================
+# CLASS WEIGHTS
+# =========================================
+# Tuned for production false positive rate
+
+positive_class_weight: [1.0]
+negative_class_weight: [20.0]  # Strong negative emphasis
+
+# =========================================
+# AUGMENTATION
+# =========================================
+# Full augmentation pipeline for robustness
+
+mix_up_augmentation_prob: [0.1]   # Light MixUp
+freq_mix_augmentation_prob: [0.1]  # Frequency mixing
+
+time_mask_max_size: [10]    # More aggressive masking
+time_mask_count: [3]
+
+freq_mask_max_size: [8]
+freq_mask_count: [3]
+
+# =========================================
+# MODEL SELECTION METRICS
+# =========================================
+# Target low false positive rate while maintaining recall
+
+target_minimization: 0.02  # Lower loss target
+
+# Maximize recall once loss target is met
+maximization_metric: "val_recall"
+
+# =========================================
+# MIXEDNET ARCHITECTURE
+# =========================================
+# Full-size model for production quality
+
+# Default production filter count
+pointwise_filters: "64,64,64,64"
+
+stride: 3
+
+# Enable some residual connections for better gradient flow
+residual_connection: "0,0,1,1,0"
+
+# Multi-scale kernel capture
+mixconv_kernel_sizes: "[5], [9], [13], [21]"
+
+first_conv_filters: 32
+first_conv_kernel_size: 3
+max_pool: 1              # Enable pooling for larger receptive field
+spatial_attention: 0
+pooled: 0

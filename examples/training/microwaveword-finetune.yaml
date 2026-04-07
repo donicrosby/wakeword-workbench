@@ -1,0 +1,134 @@
+# microWakeWord Fine-tuning Configuration
+# =========================================
+# Purpose: Adapt existing model to new data or voices
+# Expected runtime: 15-20 minutes
+# Use for: Adding new TTS voices, domain adaptation, iterative improvement
+#
+# Prerequisites:
+# - Pre-trained model checkpoint (best_weights.weights.h5)
+# - Smaller fine-tuning dataset (1,000-5,000 new samples)
+# - Existing model architecture must match
+#
+# Important: Lower learning rate preserves pre-trained features
+
+# Training directory containing split subdirectories
+train_dir: "./output/finetune/training_data"
+
+# Duration of audio clips in milliseconds (must match base model)
+clip_duration_ms: 1000
+
+# Window step for spectrogram generation (ms)
+window_step_ms: 10
+
+# Evaluation interval
+eval_step_interval: 500
+
+# =========================================
+# FEATURE SETS
+# =========================================
+# Fine-tuning with targeted new samples
+
+features:
+  # New positive samples (new voices, accents, etc.)
+  - features_dir: "./output/finetune/training_data/new_voices_mmap"
+    truth: true
+    sampling_weight: 2.0
+    penalty_weight: 1.0
+    truncation_strategy: "truncate_start"
+    type: "mmap"
+
+  # Original positive samples (preserve existing knowledge)
+  - features_dir: "./data/original_positives_mmap"
+    truth: true
+    sampling_weight: 1.0    # Equal weight to new
+    penalty_weight: 0.5     # Lower penalty for original samples
+    truncation_strategy: "truncate_start"
+    type: "mmap"
+
+  # Targeted hard negatives for new failure cases
+  - features_dir: "./output/finetune/training_data/new_negatives_mmap"
+    truth: false
+    sampling_weight: 8.0
+    penalty_weight: 1.5     # Slightly higher for targeted negatives
+    truncation_strategy: "truncate_start"
+    type: "mmap"
+
+  # Generic negatives for baseline preservation
+  - features_dir: "./data/negatives/generic_negatives_mmap"
+    truth: false
+    sampling_weight: 5.0
+    penalty_weight: 1.0
+    truncation_strategy: "truncate_start"
+    type: "mmap"
+
+# =========================================
+# TRAINING SCHEDULE
+# =========================================
+# Conservative schedule to preserve learned features
+
+# Fewer steps for fine-tuning
+training_steps: [15000]  # Shorter than full training
+
+# CRITICAL: Much lower learning rate for fine-tuning
+# This prevents catastrophic forgetting of pre-trained weights
+learning_rates: [0.0001]  # 10x lower than production
+
+batch_size: 64  # Smaller batch for stability
+
+# =========================================
+# CLASS WEIGHTS
+# =========================================
+# Balanced to not overfit to new samples
+
+positive_class_weight: [1.0]
+negative_class_weight: [15.0]  # Slightly less aggressive than production
+
+# =========================================
+# AUGMENTATION
+# =========================================
+# Light augmentation - don't over-distort
+# Heavy augmentation can cause catastrophic forgetting
+
+mix_up_augmentation_prob: [0.05]   # Very light MixUp
+freq_mix_augmentation_prob: [0.0]
+
+time_mask_max_size: [5]
+time_mask_count: [2]
+
+freq_mask_max_size: [5]
+freq_mask_count: [2]
+
+# =========================================
+# MODEL SELECTION METRICS
+# =========================================
+# Preserve existing accuracy while adapting
+
+# Higher threshold - don't sacrifice existing quality
+target_minimization: 0.03
+
+# Balance recall with existing false-positive performance
+maximization_metric: "val_recall"
+
+# =========================================
+# MIXEDNET ARCHITECTURE
+# =========================================
+# MUST MATCH the base model's architecture exactly
+# Check base model config for these values
+
+pointwise_filters: "64,64,64,64"  # Must match base model
+stride: 3
+residual_connection: "0,0,0,0,0"
+mixconv_kernel_sizes: "[5], [9], [13], [21]"
+first_conv_filters: 32
+first_conv_kernel_size: 3
+max_pool: 0
+spatial_attention: 0
+pooled: 0
+
+# =========================================
+# RESTORE CHECKPOINT
+# =========================================
+# To restore from a checkpoint, use CLI flag:
+# python -m microwakeword.model_train_eval ... --restore_checkpoint 1
+#
+# Ensure checkpoint is at: trained_models/model/best_weights.weights.h5

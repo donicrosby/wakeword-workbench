@@ -1,0 +1,146 @@
+# openWakeWord Production Configuration
+# =========================================
+# Purpose: High-quality model training with large dataset
+# Expected runtime: 1+ hours
+# Use for: Production deployment, comprehensive negative coverage
+#
+# Prerequisites:
+# - Large dataset (10,000+ positive, 100,000+ negative samples)
+# - External negative corpus (e.g., ACAV100M sample)
+# - False positive validation corpus
+# - RIR and background noise augmentation resources
+#
+# This configuration uses the full 3-stage training pipeline:
+#   Stage 1: Train with increasing negative weight
+#   Stage 2: Reduce LR, adjust negative weight if FP/hr too high
+#   Stage 3: Final fine-tuning with best negative weight
+
+model_name: "production_model"
+target_phrase: ["hey vera"]
+
+# Large sample counts for production
+n_samples: 20000     # Comprehensive positive coverage
+n_samples_val: 3000  # Robust validation set
+
+output_dir: "./openwakeword_production"
+
+# =========================================
+# FEATURE DATA FILES
+# =========================================
+# Production uses multiple negative sources for coverage
+
+feature_data_files:
+  # Wake word features (multiple voices/accents)
+  positive: "./openwakeword_production/features/positive_train.npy"
+
+  # Adversarial negatives (confusion phrases)
+  adversarial_negative: "./openwakeword_production/features/adversarial_negative_train.npy"
+
+  # External large negative corpus (critical for generalization)
+  # Download from: https://huggingface.co/datasets/openwakeword/ACAV100M_sample
+  ACAV100M_sample: "./data/ACAV100M_features.npy"
+
+# =========================================
+# BATCH COMPOSITION
+# =========================================
+# Optimized for production training
+
+batch_n_per_class:
+  positive: 50        # Balanced positive representation
+  adversarial_negative: 100  # Strong adversarial emphasis
+  ACAV100M_sample: 1024  # Large negative corpus dominates
+
+# =========================================
+# TRAINING PARAMETERS
+# =========================================
+
+model_type: "dnn"
+
+# Larger hidden layer for production
+layer_size: 64
+
+# Full training steps
+steps: 50000
+
+# High negative weight cap for low false positive rate
+max_negative_weight: 1500
+
+# Strict false positive target
+target_false_positives_per_hour: 0.2
+
+# =========================================
+# AUGMENTATION SETTINGS
+# =========================================
+
+augmentation_batch_size: 32
+augmentation_rounds: 2  # Multiple augmentation passes for diversity
+
+# =========================================
+# TTS SETTINGS
+# =========================================
+
+tts_batch_size: 50
+
+# =========================================
+# NEGATIVE PHRASES
+# =========================================
+# Comprehensive confusion phrase list
+# Include variations, common mispronunciations, similar-sounding phrases
+
+custom_negative_phrases:
+  # Similar phonemes
+  - "hey veronica"
+  - "hey vernon"
+  - "hey very"
+  - "hey ferry"
+  # Possessives and contractions
+  - "hey vera's"
+  - "they're vera"
+  - "where's vera"
+  # Rapid speech variations
+  - "hey vera hey"
+  - "hey hey vera"
+  - "hey vera hey vera"
+  # Accent variations
+  - "hay vera"
+  - "hey vehra"
+  - "hey veyrah"
+  # Common false positive triggers (update with your model's failures)
+  - "hey alexa"      # If testing cross-wake-word
+  - "hey siri"
+  # Background speech
+  - "the weather"
+  - "what's the time"
+
+# =========================================
+# EXTERNAL DATA
+# =========================================
+
+# False positive validation corpus
+# Critical for accurate FP/hr measurement
+# Generate from held-out audio not in training
+false_positive_validation_data_path: "./openwakeword_production/features/validation_fp.npy"
+
+# =========================================
+# AUGMENTATION RESOURCES
+# =========================================
+# Download MIT RIRs and background clips per openWakeWord docs
+
+rir_paths: "./mit_rirs"
+background_paths:
+  - "./backgrounds/speech"
+  - "./backgrounds/music"
+  - "./backgrounds/environmental"
+background_paths_duplication_rate: [1, 2, 3]  # Per-source oversampling
+
+# =========================================
+# TRAINING STAGES (automated by openWakeWord)
+# =========================================
+# Stage 1: steps=50000, lr=1e-4, negative_weight=1->1500
+# Stage 2: steps=5000, lr=1e-5, adjust negative_weight if needed
+# Stage 3: steps=5000, lr=1e-6, final adjustment
+#
+# After training:
+# - Select best checkpoints by val_accuracy, val_recall, val_fp_per_hr
+# - Average selected checkpoints
+# - Export to ONNX

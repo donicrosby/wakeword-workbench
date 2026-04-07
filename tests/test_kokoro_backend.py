@@ -13,6 +13,14 @@ from wakeword_workbench.tts.cache import TTSCache, reset_default_cache
 from wakeword_workbench.tts.kokoro_backend import KokoroBackend
 
 
+def make_mock_audio_result(audio: np.ndarray, sample_rate: int = 24000) -> MagicMock:
+    """Create a mock AudioResult object similar to pykokoro's return type."""
+    mock_result = MagicMock()
+    mock_result.audio = audio
+    mock_result.sample_rate = sample_rate
+    return mock_result
+
+
 class TestKokoroBackendAvailability:
     """Test backend availability detection."""
 
@@ -90,7 +98,7 @@ class TestKokoroBackendSynthesize:
 
         # Setup mock pipeline
         mock_instance = MagicMock()
-        mock_instance.generate.return_value = mock_audio
+        mock_instance.run.return_value = make_mock_audio_result(mock_audio, 24000)
         mock_pipeline.return_value = mock_instance
 
         with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
@@ -116,7 +124,7 @@ class TestKokoroBackendSynthesize:
         mock_audio = np.sin(2 * np.pi * 440 * np.linspace(0, 1, 24000)).astype(np.float32)
 
         mock_instance = MagicMock()
-        mock_instance.generate.return_value = mock_audio
+        mock_instance.run.return_value = make_mock_audio_result(mock_audio, 24000)
         mock_pipeline.return_value = mock_instance
 
         with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
@@ -134,7 +142,7 @@ class TestKokoroBackendSynthesize:
         """Test that synthesize uses the configured voice and speed."""
         mock_audio = np.zeros(24000, dtype=np.float32)
         mock_instance = MagicMock()
-        mock_instance.generate.return_value = mock_audio
+        mock_instance.run.return_value = make_mock_audio_result(mock_audio, 24000)
         mock_pipeline.return_value = mock_instance
 
         with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
@@ -146,7 +154,11 @@ class TestKokoroBackendSynthesize:
 
                 backend.synthesize("Test")
 
-                mock_instance.generate.assert_called_once_with("Test", voice="af_nicole", speed=1.2)
+                # Verify run was called with the correct voice and generation config
+                mock_instance.run.assert_called_once()
+                call_kwargs = mock_instance.run.call_args.kwargs
+                assert call_kwargs["voice"] == "af_nicole"
+                assert call_kwargs["generation"].speed == 1.2
 
     @patch("wakeword_workbench.tts.kokoro_backend.KokoroPipeline")
     def test_synthesize_normalizes_audio(self, mock_pipeline: MagicMock) -> None:
@@ -155,7 +167,7 @@ class TestKokoroBackendSynthesize:
         mock_audio = np.random.randn(24000).astype(np.float32) * 2.0  # exceeds [-1, 1]
 
         mock_instance = MagicMock()
-        mock_instance.generate.return_value = mock_audio
+        mock_instance.run.return_value = make_mock_audio_result(mock_audio, 24000)
         mock_pipeline.return_value = mock_instance
 
         with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
@@ -230,7 +242,7 @@ class TestKokoroBackendCaching:
         """Test that synthesize stores result in cache after synthesis."""
         mock_audio = np.zeros(24000, dtype=np.float32)
         mock_instance = MagicMock()
-        mock_instance.generate.return_value = mock_audio
+        mock_instance.run.return_value = make_mock_audio_result(mock_audio, 24000)
         mock_pipeline.return_value = mock_instance
 
         with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
@@ -255,7 +267,7 @@ class TestKokoroBackendCaching:
         """Test that synthesize returns cached result without calling pipeline."""
         mock_audio = np.zeros(24000, dtype=np.float32)
         mock_instance = MagicMock()
-        mock_instance.generate.return_value = mock_audio
+        mock_instance.run.return_value = make_mock_audio_result(mock_audio, 24000)
         mock_pipeline.return_value = mock_instance
 
         # Pre-populate cache
@@ -277,7 +289,7 @@ class TestKokoroBackendCaching:
                 result = backend.synthesize("hello world")
 
                 # Pipeline should NOT have been called
-                mock_instance.generate.assert_not_called()
+                mock_instance.run.assert_not_called()
 
                 # Result should be from cache
                 np.testing.assert_array_equal(result.audio, cached_audio)
@@ -289,7 +301,7 @@ class TestKokoroBackendCaching:
         """Test that different speeds cache separately."""
         mock_audio = np.zeros(24000, dtype=np.float32)
         mock_instance = MagicMock()
-        mock_instance.generate.return_value = mock_audio
+        mock_instance.run.return_value = make_mock_audio_result(mock_audio, 24000)
         mock_pipeline.return_value = mock_instance
 
         with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):

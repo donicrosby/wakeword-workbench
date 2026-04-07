@@ -8,13 +8,14 @@ import numpy as np
 
 # Optional dependency - graceful fallback if not installed
 try:
-    from pykokoro import KokoroPipeline, PipelineConfig
+    from pykokoro import KokoroPipeline, PipelineConfig, GenerationConfig
 
     _PYKOKORO_AVAILABLE = True
 except ImportError:
     _PYKOKORO_AVAILABLE = False
     KokoroPipeline = None  # type: ignore[assignment, misc]
     PipelineConfig = None  # type: ignore[assignment, misc]
+    GenerationConfig = None  # type: ignore[assignment, misc]
 
 from .base import BackendNotAvailableError, TTSBackend, TTSError, TTSResult
 from .cache import get_default_cache
@@ -109,24 +110,31 @@ class KokoroBackend(TTSBackend):
             return cached_result
 
         try:
-            # Generate audio using pykokoro
-            audio_24k = self._pipeline.generate(text, voice=self._voice, speed=self._speed)  # type: ignore[union-attr]
+            # Generate audio using pykokoro with speed
+            audio_result = self._pipeline.run(  # type: ignore[union-attr, misc]
+                text,
+                voice=self._voice,
+                generation=GenerationConfig(speed=self._speed),  # type: ignore[operator]
+            )
 
-            # Convert to numpy array if needed
-            if not isinstance(audio_24k, np.ndarray):
-                audio_24k = np.array(audio_24k, dtype=np.float32)
+            # Extract audio and sample rate from AudioResult
+            audio_24k = audio_result.audio
+            source_sr = audio_result.sample_rate
 
             # Ensure float32
-            audio_24k = audio_24k.astype(np.float32)
+            audio_24k = np.asarray(audio_24k, dtype=np.float32)
 
-            # Resample from 24000 Hz to 16000 Hz using librosa
+            # Resample if needed
             import librosa  # type: ignore[attr-defined]
 
-            audio_16k = librosa.resample(
-                audio_24k,
-                orig_sr=_KOKORO_SAMPLE_RATE,
-                target_sr=_TARGET_SAMPLE_RATE,
-            )
+            if source_sr != _TARGET_SAMPLE_RATE:
+                audio_16k = librosa.resample(
+                    audio_24k,
+                    orig_sr=source_sr,
+                    target_sr=_TARGET_SAMPLE_RATE,
+                )
+            else:
+                audio_16k = audio_24k
 
             # Ensure float32 after resampling
             audio_16k = audio_16k.astype(np.float32)

@@ -360,7 +360,7 @@ Wave FINAL (After ALL tasks - verification):
 
 ---
 
-- [ ] 5. Write unit tests for DatasetGenerator
+- [x] 5. Write unit tests for DatasetGenerator
 
   **What to do:**
   - Create `tests/test_dataset_generator.py`
@@ -407,7 +407,7 @@ Wave FINAL (After ALL tasks - verification):
 
 ---
 
-- [ ] 6. Wire CLI run command to DatasetGenerator
+- [x] 6. Wire CLI run command to DatasetGenerator
 
   **What to do:**
   - Replace stub in `cli.py` line 106-110
@@ -501,7 +501,7 @@ Wave FINAL (After ALL tasks - verification):
 
 ---
 
-- [ ] 8. Fix notebook dependency cells
+- [x] 8. Fix notebook dependency cells
 
   **What to do:**
   - Update Section 1 cells to handle uv environment
@@ -546,7 +546,7 @@ Wave FINAL (After ALL tasks - verification):
 
 ---
 
-- [ ] 9. Update notebook Section 2 for new workflow
+- [x] 9. Update notebook Section 2 for new workflow
 
   **What to do:**
   - Update config creation cell to match new config schema
@@ -593,7 +593,7 @@ Wave FINAL (After ALL tasks - verification):
 
 ---
 
-- [ ] 10. Create test config for "hey vera"
+- [x] 10. Create test config for "hey vera"
 
   **What to do:**
   - Create `test_hey_vera_config.yaml`

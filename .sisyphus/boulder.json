@@ -1,13 +1,18 @@
 {
-  "active_plan": "/home/doni/.local/share/opencode/worktree/global/curious-moon/.sisyphus/plans/add-mining-cli-commands.md",
-  "started_at": "2026-04-04T14:56:50.260Z",
+  "active_plan": "/home/doni/projects/micro_wake_word_trainer/micro-wakerword-workbench/.sisyphus/plans/microwakeword-notebook-fix.md",
+  "started_at": "2026-04-07T02:22:57.374Z",
   "session_ids": [
-    "ses_2b675b79bffeokIA7w1gOpm1hw",
-    "ses_2a6fc62f7ffetTwKm03U80MrBt",
-    "ses_2a6f5c49fffe0ea4x8yI2YUMUZ",
-    "ses_2a6eee4e2ffecvyYNpDt9wH3BH",
-    "ses_2a6e9db7fffedpQoKEFZD7VAYJ"
+    "ses_29a53bcf6ffeYvgmd7RBgOEzQs",
+    "ses_29a3c5e3cffen20Fo1JXedBkvP",
+    "ses_29a3ca202ffe2BM4eTvTugkwDo",
+    "ses_29a3ce0b0ffeyyl3yCvrYX1fvm",
+    "ses_29a391787ffebNUjFhbdxosQ9Z",
+    "ses_29a36a3d2ffepMccApt9sEwe11",
+    "ses_29a30dfccffelb8IAVD1JU5vhg",
+    "ses_29a316ac3ffeRIRvNDS7caHdDG",
+    "ses_29a311f47ffeUnQ1In3CsiYZpB",
+    "ses_29a31a3f9ffeXuXdlRu4VwAU0f"
   ],
-  "plan_name": "add-mining-cli-commands",
+  "plan_name": "microwakeword-notebook-fix",
   "agent": "atlas"
 }

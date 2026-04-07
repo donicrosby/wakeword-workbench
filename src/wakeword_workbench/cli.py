@@ -13,6 +13,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from wakeword_workbench import __version__
 from wakeword_workbench.config import ConfigError, load_config
+from wakeword_workbench.dataset.generator import DatasetGenerator, GeneratorError
 from wakeword_workbench.dataset.metadata import Manifest, ManifestEntry
 from wakeword_workbench.logging_config import configure_logging, get_logger
 from wakeword_workbench.mining.extractor import ExtractedClip, extract_false_positives
@@ -103,11 +104,47 @@ def run_command(
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
-        # Placeholder for actual pipeline logic (Task 7+)
-        task = progress.add_task("[cyan]Initializing pipeline...", total=None)
-        progress.update(task, description="[green]Pipeline ready (stub)")
+        task = progress.add_task("[cyan]Loading config...", total=None)
 
-    console.print("[bold green]✓[/bold green] Pipeline completed successfully")
+        # Load configuration
+        try:
+            config = load_config(config_path)
+        except ConfigError as e:
+            console.print(f"[bold red]Error:[/bold red] {e}")
+            log.error("config-load-failed", error=str(e))
+            raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
+
+        progress.update(task, description="[cyan]Initializing generator...")
+
+        # Instantiate and run dataset generator
+        try:
+            generator = DatasetGenerator(config)
+            result = generator.generate()
+        except GeneratorError as e:
+            console.print(f"[bold red]Error:[/bold red] {e}")
+            log.error("generation-failed", error=str(e))
+            raise typer.Exit(code=EXIT_ERROR) from None
+
+        progress.update(task, description="[green]Dataset generation complete")
+
+    # Display success summary
+    console.print("\n[bold]Generation Results:[/bold]")
+    console.print(f"  Positives: {result.total_positives}")
+    console.print(f"  Negatives: {result.total_negatives}")
+    console.print(f"  Total:     {result.total_entries}")
+    console.print(f"  Ratio:     {result.actual_ratio:.2f}")
+    console.print(f"  Output:    {result.output_dir}")
+    console.print(f"  Time:      {result.generation_time_seconds:.1f}s")
+
+    if result.has_warnings():
+        console.print(f"\n[yellow]Warnings ({len(result.warnings)}):[/yellow]")
+        for warning in result.warnings[:5]:
+            console.print(f"  • {warning}")
+        if len(result.warnings) > 5:
+            console.print(f"  ... and {len(result.warnings) - 5} more")
+
+    log.info("pipeline-complete", **result.summary())
+    console.print("\n[bold green]✓[/bold green] Pipeline completed successfully")
     raise typer.Exit(code=EXIT_SUCCESS)
 
 

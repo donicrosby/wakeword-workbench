@@ -1,0 +1,24 @@
+# Test configuration for "hey vera" wake word
+# Small sample counts for quick end-to-end testing
+
+wake_word: "hey vera"
+
+samples:
+  positives: 50
+  negatives_multiplier: 2  # 100 negatives total
+
+tts:
+  backend: "kokoro"
+  voices:
+    - "af_sarah"
+    - "am_adam"
+  speed: 1.0
+
+augmentation:
+  noise_snr: [0, 0]         # Disabled for microWakeWord
+  reverb_probability: 0      # Disabled
+  gain_range: [0, 0]         # Disabled
+
+output:
+  path: "./output/test_microwakeword"
+  format: ["microwakeword"]

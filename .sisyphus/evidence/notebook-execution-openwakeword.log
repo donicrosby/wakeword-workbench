@@ -1,0 +1,19 @@
+# Notebook Execution Log: training-with-openwakeword.ipynb
+# Execution Time: 2026-04-06
+# Status: SUCCESS
+
+## Command
+jupyter nbconvert --to notebook --execute notebooks/training-with-openwakeword.ipynb --output /tmp/executed-openwakeword.ipynb
+
+## Output
+[NbConvertApp] Converting notebook notebooks/training-with-openwakeword.ipynb to notebook
+/usr/lib/python3.14/site-packages/nbformat/__init__.py:96: MissingIDFieldWarning: Cell is missing an id field, this will become a hard error in future nbformat versions. You may want to use `normalize()` on your notebooks before validations (available since nbformat 5.1.4). Previous versions of nbformat are fixing this issue transparently, and will stop doing so in the future.
+  validate(nb)
+[NbConvertApp] Writing 25364 bytes to /tmp/executed-openwakeword.ipynb
+
+## Analysis
+- Notebook executed successfully
+- Output written to /tmp/executed-openwakeword.ipynb (25364 bytes)
+- Warning: MissingIDFieldWarning - cells missing id field (cosmetic, non-blocking)
+- No errors encountered
+- All cells completed successfully

@@ -1,0 +1,149 @@
+# Notebook Execution Log: training-with-microwakeword.ipynb
+# Execution Time: 2026-04-06
+# Status: FAILED
+
+## Command
+jupyter nbconvert --to notebook --execute notebooks/training-with-microwakeword.ipynb --output /tmp/executed-microwakeword.ipynb
+
+## Output
+[NbConvertApp] Converting notebook notebooks/training-with-microwakeword.ipynb to notebook
+[1;31merror[0m: [1mexternally-managed-environment[0m
+
+[31m×[0m This environment is externally managed
+[31m╰─>[0m To install Python packages system-wide, try 'pacman -S
+[31m   [0m python-xyz', where xyz is the package you are trying to
+[31m   [0m install.
+[31m   [0m 
+[31m   [0m If you wish to install a non-Arch-packaged Python package,
+[31m   [0m create a virtual environment using 'python -m venv path/to/venv'.
+[31m   [0m Then use path/to/venv/bin/python and path/to/venv/bin/pip.
+[31m   [0m 
+[31m   [0m If you wish to install a non-Arch packaged Python application,
+[31m   [0m it may be easiest to use 'pipx install xyz', which will manage a
+[31m   [0m virtual environment for you. Make sure you have python-pipx
+[31m   [0m installed via pacman.
+
+[1;35mnote[0m: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking system packages.
+[1;36mhint[0m: See PEP 668 for the detailed specification.
+Traceback (most recent call last):
+  File "/usr/bin/jupyter-nbconvert", line 8, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/usr/lib/python3.14/site-packages/jupyter_core/application.py", line 284, in launch_instance
+    super().launch_instance(argv=argv, **kwargs)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/site-packages/traitlets/config/application.py", line 1076, in launch_instance
+    app.start()
+    ~~~~~~~~~^^
+  File "/usr/lib/python3.14/site-packages/nbconvert/nbconvertapp.py", line 420, in start
+    self.convert_notebooks()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/site-packages/nbconvert/nbconvertapp.py", line 597, in convert_notebooks
+    self.convert_single_notebook(notebook_filename)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/site-packages/nbconvert/nbconvertapp.py", line 563, in convert_single_notebook
+    output, resources = self.export_single_notebook(
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        notebook_filename, resources, input_buffer=input_buffer
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/lib/python3.14/site-packages/nbconvert/nbconvertapp.py", line 487, in export_single_notebook
+    output, resources = self.exporter.from_filename(
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        notebook_filename, resources=resources
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/lib/python3.14/site-packages/nbconvert/exporters/exporter.py", line 201, in from_filename
+    return self.from_file(f, resources=resources, **kw)
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/site-packages/nbconvert/exporters/exporter.py", line 220, in from_file
+    return self.from_notebook_node(
+           ~~~~~~~~~~~~~~~~~~~~~~~^
+        nbformat.read(file_stream, as_version=4), resources=resources, **kw
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/lib/python3.14/site-packages/nbconvert/exporters/notebook.py", line 36, in from_notebook_node
+    nb_copy, resources = super().from_notebook_node(nb, resources, **kw)
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/site-packages/nbconvert/exporters/exporter.py", line 154, in from_notebook_node
+    nb_copy, resources = self._preprocess(nb_copy, resources)
+                         ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/site-packages/nbconvert/exporters/exporter.py", line 353, in _preprocess
+    nbc, resc = preprocessor(nbc, resc)
+                ~~~~~~~~~~~~^^^^^^^^^^^
+  File "/usr/lib/python3.14/site-packages/nbconvert/preprocessors/base.py", line 48, in __call__
+    return self.preprocess(nb, resources)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/site-packages/nbconvert/preprocessors/execute.py", line 103, in preprocess
+    self.preprocess_cell(cell, resources, index)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/site-packages/nbconvert/preprocessors/execute.py", line 124, in preprocess_cell
+    cell = self.execute_cell(cell, index, store_history=True)
+  File "/usr/lib/python3.14/site-packages/jupyter_core/utils/__init__.py", line 165, in wrapped
+    return loop.run_until_complete(inner)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/site-packages/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/site-packages/nbclient/client.py", line 1062, in async_execute_cell
+    await self._check_raise_for_error(cell, cell_index, exec_reply)
+  File "/usr/lib/python3.14/site-packages/nbclient/client.py", line 918, in _check_raise_for_error
+    raise CellExecutionError.from_cell_and_msg(cell, exec_reply_content)
+nbclient.exceptions.CellExecutionError: An error occurred while executing the following cell:
+------------------
+# Install WakeWord Workbench
+# If running in the project directory, use: pip install -e .
+# Otherwise: pip install wakeword-workbench
+
+import subprocess
+import os
+
+# Check if we are in the project directory
+if os.path.exists("pyproject.toml") and os.path.exists("src/wakeword_workbench"):
+    print("Installing WakeWord Workbench from local source...")
+    subprocess.run(["pip", "install", "-e", "."], check=True)
+else:
+    print("Installing WakeWord Workbench from PyPI...")
+    subprocess.run(["pip", "install", "wakeword-workbench"], check=True)
+------------------
+
+----- stdout -----
+Installing WakeWord Workbench from PyPI...
+----- stderr -----
+error: externally-managed-environment
+
+× This environment is externally managed
+╰─> To install Python packages system-wide, try 'pacman -S
+   python-xyz', where xyz is the package you are trying to
+   install.
+   
+   If you wish to install a non-Arch-packaged Python package,
+   create a virtual environment using 'python -m venv path/to/venv'.
+   Then use path/to/venv/bin/python and path/to/venv/bin/pip.
+   
+   If you wish to install a non-Arch packaged Python application,
+   it may be easiest to use 'pipx install xyz', which will manage a
+   virtual environment for you. Make sure you have python-pipx
+   installed via pacman.
+
+note: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking system packages.
+hint: See PEP 668 for the detailed specification.
+
+---------------------------------------------------------------------------
+CalledProcessError                        Traceback (most recent call last)
+Cell In[2], line 14
+     12 else:
+     13     print("Installing WakeWord Workbench from PyPI...")
+---> 14     subprocess.run(["pip", "install", "wakeword-workbench"], check=True)
+
+CalledProcessError: Command '['pip', 'install', 'wakeword-workbench']' returned non-zero exit status 1.
+
+## Analysis
+- Failed at Cell 2 (In[2])
+- Error: CalledProcessError - pip install failed due to externally-managed-environment
+- This is an environment-specific issue: system Python doesn't allow pip installs
+- The notebook tries to pip install wakeword-workbench package
+- Workaround: Run notebook in a virtual environment or use --break-system-packages flag

@@ -1,1 +1,636 @@
 """Dataset generator for wake word training samples."""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from importlib import import_module
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from wakeword_workbench.config import Config
+from wakeword_workbench.logging_config import get_logger
+from wakeword_workbench.negatives.phrase_generator import generate_confusions
+from wakeword_workbench.negatives.synthetic_generator import generate_synthetic_negatives
+from wakeword_workbench.tts.base import TTSBackend, TTSError
+from wakeword_workbench.tts.registry import get_backend
+
+from .merger import MergerError, merge
+from .metadata import Manifest, ManifestEntry, ManifestError
+from .positive_generator import PositiveGenerator, PositiveGeneratorError
+from .splitter import SplitValidationError, split
+
+log = get_logger(__name__)
+
+
+class GeneratorError(Exception):
+    """Base exception for DatasetGenerator errors."""
+
+
+class GeneratorConfigError(GeneratorError):
+    """Configuration validation failed."""
+
+
+class GeneratorTTSError(GeneratorError):
+    """TTS synthesis failed during negative generation."""
+
+
+class GeneratorMergeError(GeneratorError):
+    """Manifest merge failed."""
+
+
+class GeneratorSplitError(GeneratorError):
+    """Manifest split failed."""
+
+
+class GeneratorIOError(GeneratorError):
+    """File I/O operation failed."""
+
+
+@dataclass
+class GenerationResult:
+    """Result of a dataset generation run."""
+
+    train_manifest: Manifest
+    val_manifest: Manifest
+    test_manifest: Manifest
+    total_positives: int
+    total_negatives: int
+    total_entries: int
+    train_count: int
+    val_count: int
+    test_count: int
+    target_ratio: float | None
+    actual_ratio: float
+    output_dir: Path
+    generation_time_seconds: float
+    warnings: list[str] = field(default_factory=list)
+
+    def has_warnings(self) -> bool:
+        """Check if any warnings were generated."""
+        return len(self.warnings) > 0
+
+    def summary(self) -> dict[str, Any]:
+        """Return a summary dictionary for logging/reporting."""
+        return {
+            "total_entries": self.total_entries,
+            "positives": self.total_positives,
+            "negatives": self.total_negatives,
+            "ratio": self.actual_ratio,
+            "splits": {
+                "train": self.train_count,
+                "val": self.val_count,
+                "test": self.test_count,
+            },
+            "output_dir": str(self.output_dir),
+            "warnings": len(self.warnings),
+        }
+
+
+class DatasetGenerator:
+    """Orchestrates the full dataset generation pipeline.
+
+    Coordinates PositiveGenerator, negative phrase generation, TTS synthesis,
+    merging, and splitting into a unified workflow.
+    """
+
+    def __init__(self, config: Config, output_dir: Path | None = None) -> None:
+        """Initialize DatasetGenerator.
+
+        Args:
+            config: Validated Config object from load_config().
+            output_dir: Override output directory. Defaults to config.output.path.
+
+        Raises:
+            GeneratorConfigError: If config is invalid for generation.
+        """
+        if not config.wake_word.strip():
+            raise GeneratorConfigError("wake_word cannot be empty")
+        if config.samples.positives <= 0:
+            raise GeneratorConfigError("samples.positives must be positive")
+        if config.samples.negatives_multiplier <= 0:
+            raise GeneratorConfigError("samples.negatives_multiplier must be positive")
+        if not config.tts.voices:
+            raise GeneratorConfigError("tts.voices cannot be empty")
+
+        self.config = config
+        self.output_dir = Path(output_dir) if output_dir is not None else Path(config.output.path)
+        self._voice_index = 0
+        self._validate_files = False
+
+        log.info(
+            "dataset_generator_init",
+            wake_word=self.config.wake_word,
+            tts_backend=self.config.tts.backend,
+            voices=len(self.config.tts.voices),
+            output_dir=str(self.output_dir),
+        )
+
+    def generate(
+        self,
+        positive_count: int | None = None,
+        negatives_multiplier: int | None = None,
+        train_ratio: float = 0.7,
+        val_ratio: float = 0.15,
+        test_ratio: float = 0.15,
+        ratio: float | None = None,
+        validate_files: bool = False,
+    ) -> GenerationResult:
+        """Generate a complete dataset with train/val/test splits.
+
+        Args:
+            positive_count: Override positive sample count.
+            negatives_multiplier: Override negatives multiplier.
+            train_ratio: Fraction for training split.
+            val_ratio: Fraction for validation split.
+            test_ratio: Fraction for test split.
+            ratio: Target neg:pos ratio for merge; None uses all negatives.
+            validate_files: Whether to validate referenced files exist.
+
+        Returns:
+            GenerationResult with manifests and generation statistics.
+
+        Raises:
+            GeneratorConfigError: Invalid parameters.
+            GeneratorTTSError: TTS synthesis failed.
+            GeneratorMergeError: Manifest merge failed.
+            GeneratorSplitError: Split validation failed.
+            GeneratorIOError: File write/read failed.
+        """
+        start = time.perf_counter()
+        warnings: list[str] = []
+
+        resolved_positive_count = (
+            positive_count if positive_count is not None else self.config.samples.positives
+        )
+        resolved_neg_multiplier = (
+            negatives_multiplier
+            if negatives_multiplier is not None
+            else self.config.samples.negatives_multiplier
+        )
+
+        if resolved_positive_count <= 0:
+            raise GeneratorConfigError(
+                f"positive_count must be positive, got {resolved_positive_count}"
+            )
+        if resolved_neg_multiplier <= 0:
+            raise GeneratorConfigError(
+                f"negatives_multiplier must be positive, got {resolved_neg_multiplier}"
+            )
+        if abs((train_ratio + val_ratio + test_ratio) - 1.0) > 1e-9:
+            raise GeneratorConfigError("train_ratio + val_ratio + test_ratio must sum to 1.0")
+        if ratio is not None and ratio <= 0:
+            raise GeneratorConfigError(f"ratio must be positive when provided, got {ratio}")
+
+        total_negatives_target = resolved_positive_count * resolved_neg_multiplier
+        output_dir = self._ensure_output_dir()
+        self._validate_files = validate_files
+
+        self._log_progress("start", "beginning dataset generation")
+        log.info(
+            "generation_parameters",
+            positive_count=resolved_positive_count,
+            negatives_multiplier=resolved_neg_multiplier,
+            target_negatives=total_negatives_target,
+            split_train=train_ratio,
+            split_val=val_ratio,
+            split_test=test_ratio,
+            merge_ratio=ratio,
+            validate_files=validate_files,
+        )
+
+        self._log_progress("positives", "generating positive samples")
+        pos_manifest = self._generate_positives(resolved_positive_count)
+
+        self._log_progress("negative_phrases", "generating negative phrases")
+        negative_phrases = self._generate_negative_phrases(total_negatives_target)
+        if len(negative_phrases) < total_negatives_target:
+            warnings.append(
+                "Generated fewer negative phrases than requested "
+                f"({len(negative_phrases)}/{total_negatives_target})"
+            )
+
+        self._log_progress("negative_tts", "synthesizing negative phrases")
+        neg_manifest = self._synthesize_negatives(negative_phrases)
+
+        self._log_progress("merge", "merging positive and negative manifests")
+        combined_manifest = self._merge_manifests(pos_manifest, neg_manifest, ratio)
+
+        self._log_progress("split", "splitting merged manifest")
+        train_manifest, val_manifest, test_manifest = self._split_manifest(
+            combined_manifest,
+            train_ratio=train_ratio,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+        )
+
+        self._log_progress("save", "saving split manifests")
+        self._save_splits(train_manifest, val_manifest, test_manifest)
+
+        total_positives = sum(1 for entry in combined_manifest if entry.label == 1)
+        total_negatives = sum(1 for entry in combined_manifest if entry.label == 0)
+        actual_ratio = total_negatives / total_positives if total_positives > 0 else 0.0
+
+        result = GenerationResult(
+            train_manifest=train_manifest,
+            val_manifest=val_manifest,
+            test_manifest=test_manifest,
+            total_positives=total_positives,
+            total_negatives=total_negatives,
+            total_entries=len(combined_manifest),
+            train_count=len(train_manifest),
+            val_count=len(val_manifest),
+            test_count=len(test_manifest),
+            target_ratio=ratio,
+            actual_ratio=actual_ratio,
+            output_dir=output_dir,
+            generation_time_seconds=time.perf_counter() - start,
+            warnings=warnings,
+        )
+
+        log.info("dataset_generation_complete", **result.summary())
+        return result
+
+    def _generate_positives(self, count: int) -> Manifest:
+        """Generate positive samples via PositiveGenerator.
+
+        Args:
+            count: Number of positive samples.
+
+        Returns:
+            Manifest with positive entries.
+
+        Raises:
+            GeneratorIOError: Positive generation failed.
+        """
+        try:
+            generator = PositiveGenerator(self.config, self.output_dir)
+            manifest_path = generator.generate(count)
+            manifest = Manifest.load(manifest_path)
+        except (PositiveGeneratorError, ManifestError, OSError) as exc:
+            raise GeneratorIOError(f"Failed generating positives: {exc}") from exc
+
+        log.info("positive_generation_complete", count=len(manifest), manifest=str(manifest_path))
+        return manifest
+
+    def _generate_negative_phrases(self, total_count: int) -> list[str]:
+        """Generate negative phrase strings.
+
+        Args:
+            total_count: Total number of negative phrases needed.
+
+        Returns:
+            List of unique negative phrase strings.
+        """
+        if total_count <= 0:
+            return []
+
+        confusion_count = int(total_count * 0.6)
+        synthetic_count = total_count - confusion_count
+
+        confusion_phrases = self._generate_confusion_phrases(confusion_count)
+        synthetic_phrases = self._generate_synthetic_phrases(synthetic_count)
+
+        seen: set[str] = set()
+        combined: list[str] = []
+        for phrase in confusion_phrases + synthetic_phrases:
+            normalized = phrase.strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            combined.append(phrase.strip())
+            if len(combined) >= total_count:
+                break
+
+        if len(combined) < total_count:
+            shortfall = total_count - len(combined)
+            log.warning("negative_phrase_shortfall", shortfall=shortfall)
+            fill_phrases = self._generate_synthetic_phrases(shortfall)
+            for phrase in fill_phrases:
+                normalized = phrase.strip().lower()
+                if not normalized or normalized in seen:
+                    continue
+                seen.add(normalized)
+                combined.append(phrase.strip())
+                if len(combined) >= total_count:
+                    break
+
+        log.info(
+            "negative_phrases_generated",
+            requested=total_count,
+            confusion_generated=len(confusion_phrases),
+            synthetic_generated=len(synthetic_phrases),
+            total_unique=len(combined),
+        )
+        return combined
+
+    def _generate_confusion_phrases(self, count: int) -> list[str]:
+        """Generate confusion phrases.
+
+        Args:
+            count: Number of confusion phrases to generate.
+
+        Returns:
+            List of confusion phrase strings.
+
+        Raises:
+            GeneratorError: If jellyfish is not installed.
+        """
+        if count <= 0:
+            return []
+
+        try:
+            return generate_confusions(self.config.wake_word, count=count)
+        except ImportError as exc:
+            raise GeneratorError(f"Failed generating confusion phrases: {exc}") from exc
+        except ValueError as exc:
+            raise GeneratorConfigError(f"Invalid confusion generation parameters: {exc}") from exc
+
+    def _generate_synthetic_phrases(self, count: int) -> list[str]:
+        """Generate synthetic negative phrases.
+
+        Args:
+            count: Number of synthetic phrases to generate.
+
+        Returns:
+            List of synthetic phrase strings.
+        """
+        if count <= 0:
+            return []
+
+        return generate_synthetic_negatives(count=count, wake_word=self.config.wake_word)
+
+    def _synthesize_negatives(self, phrases: list[str]) -> Manifest:
+        """Synthesize audio for negative phrases and create a Manifest.
+
+        Args:
+            phrases: Negative phrase strings to synthesize.
+
+        Returns:
+            Manifest with negative entries.
+
+        Raises:
+            GeneratorTTSError: TTS synthesis failed.
+        """
+        backend = self._get_tts_backend()
+        negatives_dir = self.output_dir / "negatives"
+        negatives_dir.mkdir(parents=True, exist_ok=True)
+
+        entries: list[ManifestEntry] = []
+        failed = 0
+
+        for index, phrase in enumerate(phrases):
+            voice = self._select_voice_for_phrase(phrase)
+            filename = f"negative_{index:06d}.wav"
+            file_path = negatives_dir / filename
+
+            try:
+                backend.set_voice(voice)
+                result = backend.synthesize(phrase)
+                audio = self._ensure_format(result.audio, result.sample_rate)
+                audio = self._ensure_mono(audio)
+                soundfile = import_module("soundfile")
+                soundfile.write(file_path, audio, 16000)
+
+                duration_ms = int(len(audio) / 16000 * 1000)
+                entries.append(
+                    ManifestEntry(
+                        path=str(file_path),
+                        label=0,
+                        text=phrase,
+                        voice=voice,
+                        duration_ms=duration_ms,
+                        sample_rate=16000,
+                    )
+                )
+            except (TTSError, OSError, ValueError) as exc:
+                failed += 1
+                log.warning(
+                    "negative_tts_failed",
+                    phrase=phrase,
+                    voice=voice,
+                    error=str(exc),
+                )
+
+        if not entries:
+            raise GeneratorTTSError(
+                "Failed to synthesize any negative samples. "
+                f"attempted={len(phrases)} failed={failed}"
+            )
+
+        log.info(
+            "negative_tts_complete",
+            requested=len(phrases),
+            generated=len(entries),
+            failed=failed,
+            output_dir=str(negatives_dir),
+        )
+        return Manifest(entries)
+
+    def _get_tts_backend(self) -> TTSBackend:
+        """Get configured TTS backend.
+
+        Returns:
+            TTS backend instance.
+
+        Raises:
+            GeneratorConfigError: Backend unavailable.
+        """
+        try:
+            return get_backend(self.config.tts.backend)
+        except Exception as exc:
+            raise GeneratorConfigError(
+                f"Failed to initialize TTS backend '{self.config.tts.backend}': {exc}"
+            ) from exc
+
+    def _select_voice_for_phrase(self, phrase: str) -> str:
+        """Select a voice for synthesizing a phrase.
+
+        Uses round-robin across configured voices.
+
+        Args:
+            phrase: Phrase to be synthesized.
+
+        Returns:
+            Voice identifier.
+        """
+        del phrase  # phrase reserved for future voice selection strategies
+        voices = self.config.tts.voices
+        voice = voices[self._voice_index % len(voices)]
+        self._voice_index += 1
+        return voice
+
+    def _merge_manifests(
+        self,
+        pos_manifest: Manifest,
+        neg_manifest: Manifest,
+        ratio: float | None,
+    ) -> Manifest:
+        """Merge positive and negative manifests.
+
+        Args:
+            pos_manifest: Positive samples manifest.
+            neg_manifest: Negative samples manifest.
+            ratio: Target ratio (neg/pos). None uses all entries.
+        Returns:
+            Combined manifest.
+
+        Raises:
+            GeneratorMergeError: Merge failed.
+        """
+        try:
+            merged = merge(
+                pos_manifest,
+                neg_manifest,
+                ratio=ratio,
+                validate_files=self._validate_files,
+            )
+        except MergerError as exc:
+            raise GeneratorMergeError(f"Failed merging manifests: {exc}") from exc
+
+        log.info(
+            "manifest_merge_complete",
+            positive_count=len(pos_manifest),
+            negative_count=len(neg_manifest),
+            merged_count=len(merged),
+            target_ratio=ratio,
+        )
+        return merged
+
+    def _split_manifest(
+        self,
+        manifest: Manifest,
+        train_ratio: float,
+        val_ratio: float,
+        test_ratio: float,
+    ) -> tuple[Manifest, Manifest, Manifest]:
+        """Split manifest into train/val/test sets.
+
+        Args:
+            manifest: Combined manifest to split.
+            train_ratio: Training fraction.
+            val_ratio: Validation fraction.
+            test_ratio: Test fraction.
+
+        Returns:
+            Tuple of (train, val, test) manifests.
+
+        Raises:
+            GeneratorSplitError: Split validation failed.
+        """
+        try:
+            train, val, test = split(
+                manifest,
+                train=train_ratio,
+                val=val_ratio,
+                test=test_ratio,
+                by="speaker",
+            )
+        except SplitValidationError as exc:
+            raise GeneratorSplitError(f"Failed splitting manifest: {exc}") from exc
+
+        log.info(
+            "manifest_split_complete",
+            total=len(manifest),
+            train=len(train),
+            val=len(val),
+            test=len(test),
+        )
+        return train, val, test
+
+    def _save_splits(self, train: Manifest, val: Manifest, test: Manifest) -> None:
+        """Save split manifests to output directory.
+
+        Args:
+            train: Training manifest.
+            val: Validation manifest.
+            test: Test manifest.
+
+        Raises:
+            GeneratorIOError: File write failed.
+        """
+        train_path = self.output_dir / "train.jsonl"
+        val_path = self.output_dir / "val.jsonl"
+        test_path = self.output_dir / "test.jsonl"
+
+        try:
+            train.save(train_path)
+            val.save(val_path)
+            test.save(test_path)
+        except (ManifestError, OSError) as exc:
+            raise GeneratorIOError(f"Failed saving split manifests: {exc}") from exc
+
+        log.info(
+            "split_manifests_saved",
+            train_path=str(train_path),
+            val_path=str(val_path),
+            test_path=str(test_path),
+        )
+
+    def _ensure_output_dir(self) -> Path:
+        """Ensure output directory exists.
+
+        Returns:
+            Output directory path.
+
+        Raises:
+            GeneratorIOError: Directory creation failed.
+        """
+        try:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise GeneratorIOError(f"Failed creating output directory: {exc}") from exc
+        return self.output_dir
+
+    def _log_progress(self, phase: str, message: str) -> None:
+        """Log generation progress with structured context.
+
+        Args:
+            phase: Current phase identifier.
+            message: Human-readable progress message.
+        """
+        log.info("dataset_generation_progress", phase=phase, message=message)
+
+    def _ensure_format(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
+        """Ensure audio is 16 kHz.
+
+        Args:
+            audio: Audio samples.
+            sample_rate: Original sample rate.
+
+        Returns:
+            Audio resampled to 16 kHz.
+        """
+        if sample_rate == 16000:
+            return audio
+
+        librosa = import_module("librosa")
+        resampled = librosa.resample(audio, orig_sr=sample_rate, target_sr=16000)
+        return resampled.astype(np.float32)
+
+    def _ensure_mono(self, audio: np.ndarray) -> np.ndarray:
+        """Convert multi-channel audio to mono.
+
+        Args:
+            audio: Input audio samples.
+
+        Returns:
+            Mono audio samples.
+        """
+        if audio.ndim > 1:
+            return audio.mean(axis=1)
+        return audio
+
+
+__all__ = [
+    "DatasetGenerator",
+    "GenerationResult",
+    "GeneratorError",
+    "GeneratorConfigError",
+    "GeneratorTTSError",
+    "GeneratorMergeError",
+    "GeneratorSplitError",
+    "GeneratorIOError",
+]

@@ -8,12 +8,13 @@ import numpy as np
 
 # Optional dependency - graceful fallback if not installed
 try:
-    from pykokoro import KokoroPipeline
+    from pykokoro import KokoroPipeline, PipelineConfig
 
     _PYKOKORO_AVAILABLE = True
 except ImportError:
     _PYKOKORO_AVAILABLE = False
     KokoroPipeline = None  # type: ignore[assignment, misc]
+    PipelineConfig = None  # type: ignore[assignment, misc]
 
 from .base import BackendNotAvailableError, TTSBackend, TTSError, TTSResult
 from .cache import get_default_cache
@@ -68,7 +69,7 @@ class KokoroBackend(TTSBackend):
         # Initialize pipeline lazily to avoid loading models at import time
         if KokoroBackend._pipeline is None:
             try:
-                KokoroBackend._pipeline = KokoroPipeline()  # type: ignore[operator]
+                KokoroBackend._pipeline = KokoroPipeline(PipelineConfig())  # type: ignore[operator]
             except Exception as e:
                 raise TTSError(f"Failed to initialize Kokoro pipeline: {e}") from e
 

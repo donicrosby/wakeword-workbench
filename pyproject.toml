@@ -37,6 +37,12 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.9",
     {include-group = "tts"},
+    "tensorflow>=2.15",
+    "pymicro-features>=0.5",
+    "mmap-ninja>=0.6",
+    "datasets>=2.16",
+    "tqdm>=4.66",
+    "matplotlib>=3.8",
 ]
 tts-kokoro = [
     "pykokoro>=0.6"

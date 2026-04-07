@@ -51,3 +51,7 @@ Thumbs.db
 
 # Ruff
 .ruff_cache/
+
+output/
+.ipynb_checkpoints/
+.jupyter_ystore.db

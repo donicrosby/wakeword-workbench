@@ -639,7 +639,7 @@ Wave FINAL (After ALL tasks - verification):
 
 ---
 
-- [ ] 11. Run end-to-end integration test
+- [x] 11. Run end-to-end integration test
 
   **What to do:**
   - Run: `uv run wakeword-workbench run test_hey_vera_config.yaml`
@@ -690,7 +690,7 @@ Wave FINAL (After ALL tasks - verification):
 
 ## Final Verification Wave
 
-- [ ] F1. Full pipeline verification
+- [x] F1. Full pipeline verification
 
   Run complete end-to-end test:
   1. Clean environment: `rm -rf ./output/`
@@ -701,7 +701,7 @@ Wave FINAL (After ALL tasks - verification):
 
   **Expected**: All steps pass, no errors
 
-- [ ] F2. Code quality check
+- [x] F2. Code quality check
 
   1. Run: `uv run ruff check src/`
   2. Run: `uv run mypy src/wakeword_workbench`

@@ -250,8 +250,8 @@ class TestExportWithFeatures:
         result = export_with_features(manifest, output_dir, split="train", audio_dir=audio_dir)
 
         data = np.load(result["data"])
-        indices = np.load(result["indices"])
-        labels = np.load(result["labels"])
+        np.load(result["indices"])
+        np.load(result["labels"])
         durations = np.load(result["durations"])
 
         # Verify data is 2D

@@ -152,9 +152,7 @@ class TestApplyPrefixSuffixVariations:
         rng = DeterministicRandom(42)
         variations = _apply_prefix_suffix_variations(phrase, rng)
         # Check that at least one variation has a prefix (starts with a leading word)
-        prefixed = [
-            v for v in variations if v.startswith(tuple(["hey ", "hi ", "okay ", "ok ", "yo "]))
-        ]
+        prefixed = [v for v in variations if v.startswith(("hey ", "hi ", "okay ", "ok ", "yo "))]
         assert len(prefixed) > 0
 
     def test_adds_suffix(self) -> None:

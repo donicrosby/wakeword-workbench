@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
-
-# Import real_soundfile_write before any patches are applied
 import soundfile as _real_sf_module
 
-_real_write = _real_sf_module.write
-
 from wakeword_workbench.negatives.synthetic_generator import (
-    generate_synthetic_negatives,
-    SyntheticGeneratorError,
     DEFAULT_WORDS,
     VALID_TOPICS,
+    SyntheticGeneratorError,
+    generate_synthetic_negatives,
 )
+
+_real_write = _real_sf_module.write
 
 
 class TestGenerateSyntheticNegatives:

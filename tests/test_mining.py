@@ -15,7 +15,6 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from wakeword_workbench.dataset.metadata import Manifest, ManifestEntry, ManifestError
 from wakeword_workbench.mining.extractor import (
     ExtractedClip,
     _generate_clip_path,
@@ -253,7 +252,7 @@ class TestProcessLongAudio:
         mock_audio = np.ones(480000, dtype=np.float32)  # 30s at 16kHz
         mock_librosa.load.return_value = (mock_audio, 16000)
 
-        results = process_long_audio(
+        process_long_audio(
             mock_model,
             audio_path,
             window_size=16000,
@@ -334,7 +333,7 @@ class TestProcessInChunks:
         mock_audio = np.ones(960000, dtype=np.float32)  # 60s at 16kHz
         mock_librosa.load.return_value = (mock_audio, 16000)
 
-        results = _process_in_chunks(
+        _process_in_chunks(
             mock_model,
             audio_path,
             window_size=16000,
@@ -1101,7 +1100,7 @@ class TestEdgeCases:
         """Threshold of zero should select all predictions."""
         with (
             patch("wakeword_workbench.mining.extractor.librosa") as mock_librosa,
-            patch("wakeword_workbench.mining.extractor.sf") as mock_sf,
+            patch("wakeword_workbench.mining.extractor.sf"),
         ):
             audio_path = tmp_path / "test.wav"
             audio_path.write_bytes(b"fake")

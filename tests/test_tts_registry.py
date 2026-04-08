@@ -5,9 +5,9 @@ import pytest
 
 from wakeword_workbench.tts import (
     BackendNotAvailableError,
-    UnknownBackendError,
     TTSBackend,
     TTSResult,
+    UnknownBackendError,
     get_backend,
     list_all_backends,
     list_available_backends,
@@ -219,7 +219,6 @@ class TestLazyLoading:
 
     def test_discovery_only_runs_once(self) -> None:
         """Auto-discovery should only run once."""
-        from wakeword_workbench.tts.registry import _DISCOVERY_RUN
 
         initial_backends = list_all_backends()
 

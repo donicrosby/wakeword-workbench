@@ -11,8 +11,8 @@ import soundfile as sf
 
 from wakeword_workbench.augment.reverb import (
     AddReverb,
-    RIRCache,
     ReverbError,
+    RIRCache,
 )
 
 
@@ -148,9 +148,6 @@ class TestAddReverb:
     def test_apply_adds_reverb_tail(self, rir_dir, sample_audio):
         """Test that reverb adds audible tail to audio."""
         reverb = AddReverb(rir_dir, p=1.0)
-
-        # Get original audio (will be returned if probability check fails)
-        original_audio = sample_audio.copy()
 
         # Apply reverb multiple times to ensure we get different audio
         # (since probability can cause skip)

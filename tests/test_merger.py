@@ -6,16 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from wakeword_workbench.dataset.metadata import Manifest, ManifestEntry
 from wakeword_workbench.dataset.merger import (
-    MergeResult,
     MergerError,
+    MergeResult,
     MergerValidationError,
     PathCollisionError,
     merge,
     merge_with_result,
 )
-
+from wakeword_workbench.dataset.metadata import Manifest, ManifestEntry
 
 # ---------------------------------------------------------------------------
 # Fixtures

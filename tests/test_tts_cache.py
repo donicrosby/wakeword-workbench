@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from wakeword_workbench.tts.base import TTSResult
 from wakeword_workbench.tts.cache import TTSCache, get_default_cache, reset_default_cache
@@ -171,7 +170,6 @@ class TestCacheLRUEviction:
 
         # Force eviction — text_0 should be evicted last
         cache._enforce_limit()
-        stats = cache.get_stats()
 
         # text_0 should still be in cache (most recently used)
         assert cache.get("text_0", "v", "b") is not None
@@ -272,8 +270,6 @@ class TestCacheCorruptionHandling:
         cache = TTSCache(cache_dir=tmp_path / "tts_cache")
         key = cache._make_key("hello", "v", "b")
         cache._cache_dir.mkdir(parents=True, exist_ok=True)
-
-        import json
 
         np.save(cache._cache_dir / f"{key}.npy", np.zeros(16000, dtype=np.float32))
         (cache._cache_dir / f"{key}.json").write_text("not valid json{{")

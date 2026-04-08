@@ -9,7 +9,6 @@ from wakeword_workbench.negatives.phrase_generator import (
     phonetic_similarity,
 )
 
-
 # --- Basic Tests ---
 
 
@@ -202,11 +201,11 @@ def test_generate_confusions_vary_by_strategy() -> None:
     assert len(set(confusions)) > 1
 
     # Check for different types of variations
-    has_prefix_change = any(c.startswith("hay ") or c.startswith("say ") for c in confusions)
-    has_consonant_change = any("marv" in c for c in confusions if c != "hey marvin")
-
     # At least one strategy should have produced results
     assert len(confusions) > 0
+    assert any(c.startswith("hay ") or c.startswith("say ") for c in confusions) or any(
+        "marv" in c for c in confusions if c != "hey marvin"
+    )
 
 
 def test_generate_confusions_preserves_structure() -> None:

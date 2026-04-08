@@ -1,6 +1,19 @@
 # Export API Reference
 
-Complete API reference for WakeWord Workbench export modules. These modules convert dataset manifests into formats compatible with microWakeWord and openWakeWord training frameworks.
+Complete API reference for WakeWord Workbench export modules. These modules convert dataset manifests into intermediate artifacts used by microWakeWord and openWakeWord workflows.
+
+## Setup checkpoint
+
+Before running export examples, bootstrap and verify the repo environment:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If backend initialization fails, install `uv sync --extra kokoro` or `uv sync --extra piper`.
 
 ## Overview
 
@@ -12,7 +25,7 @@ The export modules provide two distinct export formats:
 | **MicroWakeWord Features** | `microwakeword.py` | Pre-computed mel-spectrograms | Faster training startup |
 | **OpenWakeWord** | `openwakeword.py` | NumPy arrays (X, y) | Standard ML workflows |
 
-All export functions accept a `Manifest` object and produce files suitable for model training.
+All export functions accept a `Manifest` object and produce intermediate files that may require additional harness-specific conversion before model training.
 
 ---
 

@@ -4,6 +4,19 @@
 
 This document maps WakeWord Workbench outputs to both microWakeWord and openWakeWord training harnesses, providing exact format requirements, conversion steps, and code snippets.
 
+## Setup checkpoint
+
+Before following conversion steps, initialize and verify the repo:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If validation reports a missing backend, install `uv sync --extra kokoro` or `uv sync --extra piper`.
+
 ---
 
 ## Quick Reference

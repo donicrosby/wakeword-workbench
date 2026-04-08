@@ -4,6 +4,19 @@
 
 This guide helps you choose between microWakeWord and openWakeWord training harnesses, understand their differences, and integrate them with WakeWord Workbench.
 
+## Setup checkpoint
+
+Before running integration steps, bootstrap from repo root:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If validation fails due to backend availability, install `uv sync --extra kokoro` or `uv sync --extra piper`.
+
 ---
 
 ## Quick Decision
@@ -207,11 +220,13 @@ samples:
   negatives_multiplier: 3
 
 tts:
-  backend: "kokoro"
-  voices:
-    - "af_sarah"
-    - "am_adam"
-    - "af_bella"
+  providers:
+    - backend: "kokoro"
+      voices:
+        - "af_sarah"
+        - "am_adam"
+        - "af_bella"
+      speed: 1.0
 
 augmentation:
   # DISABLE for microWakeWord - use native augmentation
@@ -221,7 +236,7 @@ augmentation:
 
 output:
   path: "./output/microwakeword"
-  format: []  # Export WAV only
+  format: ["microwakeword"]
 ```
 
 ```bash
@@ -310,10 +325,12 @@ samples:
   negatives_multiplier: 2
 
 tts:
-  backend: "kokoro"
-  voices:
-    - "af_sarah"
-    - "am_adam"
+  providers:
+    - backend: "kokoro"
+      voices:
+        - "af_sarah"
+        - "am_adam"
+      speed: 1.0
 
 augmentation:
   # ENABLE for openWakeWord
@@ -323,7 +340,7 @@ augmentation:
 
 output:
   path: "./output/openwakeword"
-  format: []  # Export WAV only
+  format: ["openwakeword"]
 ```
 
 ```bash

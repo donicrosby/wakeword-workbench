@@ -2,6 +2,19 @@
 
 Complete documentation for WakeWord Workbench configuration files.
 
+## Setup checkpoint
+
+Before validating or editing configs, bootstrap and smoke-test the repo:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If your config backend is missing, install `uv sync --extra kokoro` or `uv sync --extra piper`.
+
 ## Introduction
 
 WakeWord Workbench uses YAML configuration files to define dataset generation parameters. All configuration is validated at load time with clear error messages for invalid values.

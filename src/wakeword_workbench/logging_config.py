@@ -19,7 +19,7 @@ from __future__ import annotations
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 from structlog.types import EventDict, Processor
@@ -295,8 +295,8 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
         >>> log.info("message", key="value")
     """
     if name:
-        return structlog.get_logger(name)
-    return structlog.get_logger()
+        return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger())
 
 
 def get_log_level() -> str:

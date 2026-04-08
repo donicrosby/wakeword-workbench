@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from io import BytesIO
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -21,6 +19,7 @@ class TestPiperBackendAvailability:
         """is_available() should return a boolean."""
         # Import fresh to avoid cached module state
         import importlib
+
         import wakeword_workbench.tts.piper_backend as piper_module
 
         importlib.reload(piper_module)
@@ -91,8 +90,9 @@ class TestPiperBackendSynthesize:
         mock_piper_voice: MagicMock,
     ) -> None:
         """synthesize() should return a TTSResult with 16000 Hz audio."""
-        import wakeword_workbench.tts.piper_backend as piper_module
         import soundfile as sf
+
+        import wakeword_workbench.tts.piper_backend as piper_module
 
         model_path = tmp_path / "test_model.onnx"
         model_path.touch()
@@ -244,8 +244,9 @@ class TestPiperBackendTTSResultValidation:
         mock_piper_voice: MagicMock,
     ) -> None:
         """TTSResult audio should be normalized to [-1, 1]."""
-        import wakeword_workbench.tts.piper_backend as piper_module
         import soundfile as sf
+
+        import wakeword_workbench.tts.piper_backend as piper_module
 
         model_path = tmp_path / "test_model.onnx"
         model_path.touch()
@@ -276,8 +277,9 @@ class TestPiperBackendTTSResultValidation:
         mock_piper_voice: MagicMock,
     ) -> None:
         """TTSResult duration should match actual audio length."""
-        import wakeword_workbench.tts.piper_backend as piper_module
         import soundfile as sf
+
+        import wakeword_workbench.tts.piper_backend as piper_module
 
         model_path = tmp_path / "test_model.onnx"
         model_path.touch()
@@ -325,8 +327,9 @@ class TestPiperBackendCaching:
         mock_cache: TTSCache,
     ) -> None:
         """Test that synthesize stores result in cache after synthesis."""
-        import wakeword_workbench.tts.piper_backend as piper_module
         import soundfile as sf
+
+        import wakeword_workbench.tts.piper_backend as piper_module
 
         model_path = tmp_path / "test_model.onnx"
         model_path.touch()

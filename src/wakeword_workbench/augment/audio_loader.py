@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 
 import librosa
 import numpy as np
-import soundfile as sf
+from numpy.typing import NDArray
 
 
 class AudioLoadError(Exception):
@@ -27,7 +28,9 @@ class AudioMetadata:
     filename: str
 
 
-def load_audio(path: Path | str, target_sr: int = 16000) -> tuple[np.ndarray, AudioMetadata]:
+def load_audio(
+    path: Path | str, target_sr: int = 16000
+) -> tuple[NDArray[np.float32], AudioMetadata]:
     """Load an audio file and resample to the target sample rate.
 
     Args:
@@ -47,8 +50,9 @@ def load_audio(path: Path | str, target_sr: int = 16000) -> tuple[np.ndarray, Au
         raise AudioLoadError(f"Audio file not found: {path}")
 
     try:
-        info = sf.info(path)
-        audio, original_sr = sf.read(path, always_2d=False, dtype="float32")
+        soundfile = import_module("soundfile")
+        info = soundfile.info(path)
+        audio, original_sr = soundfile.read(path, always_2d=False, dtype="float32")
         audio = np.asarray(audio, dtype=np.float32)
         channels = info.channels
     except Exception as e:
@@ -68,7 +72,7 @@ def load_audio(path: Path | str, target_sr: int = 16000) -> tuple[np.ndarray, Au
     # Resample if needed
     if original_sr != target_sr:
         audio = librosa.resample(audio, orig_sr=original_sr, target_sr=target_sr)
-        audio = audio.astype(np.float32)
+        audio = np.asarray(audio, dtype=np.float32)
 
     # Calculate duration
     duration = len(audio) / target_sr
@@ -84,7 +88,7 @@ def load_audio(path: Path | str, target_sr: int = 16000) -> tuple[np.ndarray, Au
     return audio, metadata
 
 
-def save_audio(path: Path | str, audio: np.ndarray, sr: int) -> None:
+def save_audio(path: Path | str, audio: NDArray[np.float32], sr: int) -> None:
     """Save audio data to a WAV file.
 
     Args:
@@ -108,6 +112,7 @@ def save_audio(path: Path | str, audio: np.ndarray, sr: int) -> None:
 
     try:
         # Save as 16-bit PCM WAV
-        sf.write(path, audio, sr, subtype="PCM_16")
+        soundfile = import_module("soundfile")
+        soundfile.write(path, audio, sr, subtype="PCM_16")
     except Exception as e:
         raise AudioLoadError(f"Failed to save audio to '{path}': {e}") from e

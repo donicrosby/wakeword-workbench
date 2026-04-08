@@ -7,8 +7,6 @@ import pytest
 from wakeword_workbench.dataset.metadata import Manifest, ManifestEntry
 from wakeword_workbench.dataset.splitter import (
     SplitValidationError,
-    SplitterError,
-    SpeakerGroup,
     split,
 )
 
@@ -69,9 +67,9 @@ class TestLeakPrevention:
                     speaker2_locations.append((e.path, split_name))
 
         # All speaker1 entries should be in the same split
-        assert len(set(loc[1] for loc in speaker1_locations)) == 1
+        assert len({loc[1] for loc in speaker1_locations}) == 1
         # All speaker2 entries should be in the same split
-        assert len(set(loc[1] for loc in speaker2_locations)) == 1
+        assert len({loc[1] for loc in speaker2_locations}) == 1
 
     def test_no_speaker_in_multiple_splits(self) -> None:
         """Test that no speaker appears in multiple splits."""
@@ -184,7 +182,6 @@ class TestStratification:
 
         for split_manifest, split_name in [(train, "train"), (val, "val"), (test, "test")]:
             split_positive = sum(1 for e in split_manifest if e.label == 1)
-            split_negative = sum(1 for e in split_manifest if e.label == 0)
             split_total = len(split_manifest)
 
             # Check ratio is roughly preserved (within 10%)

@@ -313,8 +313,8 @@ class TestKokoroBackendCaching:
                 backend2 = KokoroBackend(voice="af_sarah", speed=1.5)
 
                 # Synthesize with different speeds
-                result1 = backend1.synthesize("hello")
-                result2 = backend2.synthesize("hello")
+                backend1.synthesize("hello")
+                backend2.synthesize("hello")
 
                 # Both should be in cache with different keys
                 cached1 = mock_cache.get("hello", "af_sarah", "kokoro", 1.0)

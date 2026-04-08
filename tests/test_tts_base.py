@@ -11,7 +11,6 @@ from wakeword_workbench.tts.base import (
     create_backend,
 )
 
-
 # --- TTSResult Tests ---
 
 

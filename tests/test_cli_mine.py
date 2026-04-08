@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import numpy as np
-import pytest
 from typer.testing import CliRunner
 
 from wakeword_workbench.cli import app
 
 runner = CliRunner()
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from text."""
+    return _ANSI_RE.sub("", text)
 
 
 class MockExtractedClip:
@@ -40,13 +46,14 @@ class TestMineCommandHelp:
     def test_mine_command_help(self) -> None:
         """Test that mine command shows help with all options."""
         result = runner.invoke(app, ["mine", "--help"])
+        plain = _strip_ansi(result.stdout)
         assert result.exit_code == 0
-        assert "mine" in result.stdout
-        assert "--model" in result.stdout
-        assert "--audio" in result.stdout
-        assert "--threshold" in result.stdout
-        assert "--output" in result.stdout
-        assert "hard negatives" in result.stdout.lower()
+        assert "mine" in plain
+        assert "--model" in plain
+        assert "--audio" in plain
+        assert "--threshold" in plain
+        assert "--output" in plain
+        assert "hard negatives" in plain.lower()
 
 
 class TestMineCommandValidation:

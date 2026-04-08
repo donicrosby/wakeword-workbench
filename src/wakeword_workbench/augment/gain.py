@@ -48,7 +48,7 @@ class AdjustGain:
         # Convert dB to linear scale: output = input * 10^(gain_db/20)
         linear_gain = 10 ** (gain_db / 20.0)
 
-        return (audio * linear_gain).astype(np.float32)
+        return np.asarray(audio * linear_gain, dtype=np.float32)
 
 
 class SoftClip:
@@ -87,7 +87,7 @@ class SoftClip:
         # This creates gradual saturation above threshold
         scaled = audio / self.threshold
         clipped = np.tanh(scaled) * self.threshold
-        return clipped.astype(np.float32)
+        return np.asarray(clipped, dtype=np.float32)
 
 
 class HardClip:

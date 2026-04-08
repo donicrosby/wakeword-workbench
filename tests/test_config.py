@@ -4,18 +4,16 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
-import yaml
 
 from wakeword_workbench.config import (
     AugmentationConfig,
-    Config,
     ConfigError,
     OutputConfig,
     SamplesConfig,
     TTSConfig,
+    TTSProviderConfig,
     load_config,
 )
-
 
 # --- Valid Config Tests ---
 
@@ -25,10 +23,11 @@ samples:
   positives: 1000
   negatives_multiplier: 5
 tts:
-  backend: kokoro
-  voices:
-    - af_sarah
-  speed: 1.0
+  providers:
+    - backend: kokoro
+      voices:
+        - af_sarah
+      speed: 1.0
 augmentation:
   noise_snr: [-10, 10]
   reverb_probability: 0.5
@@ -44,11 +43,16 @@ samples:
   positives: 1000
   negatives_multiplier: 5
 tts:
-  backend: kokoro
-  voices:
-    - af_sarah
-    - af_nicole
-  speed: 1.0
+  providers:
+    - backend: kokoro
+      voices:
+        - af_sarah
+        - af_nicole
+      speed: 1.0
+    - backend: piper
+      voices:
+        - en_US-amy-low
+      speed: 1.2
 augmentation:
   noise_snr: [-10, 10]
   reverb_probability: 0.5
@@ -68,9 +72,10 @@ def test_load_config_valid_minimal(tmp_path: Path) -> None:
     assert config.wake_word == "hey assistant"
     assert config.samples.positives == 1000
     assert config.samples.negatives_multiplier == 5
-    assert config.tts.backend == "kokoro"
-    assert config.tts.voices == ["af_sarah"]
-    assert config.tts.speed == 1.0
+    assert len(config.tts.providers) == 1
+    assert config.tts.providers[0].backend == "kokoro"
+    assert config.tts.providers[0].voices == ["af_sarah"]
+    assert config.tts.providers[0].speed == 1.0
     assert config.augmentation.noise_snr == [-10, 10]
     assert config.augmentation.reverb_probability == 0.5
     assert config.augmentation.gain_range == [-45, 0]
@@ -85,7 +90,13 @@ def test_load_config_valid_full(tmp_path: Path) -> None:
     config = load_config(config_file)
 
     assert config.wake_word == "hey assistant"
-    assert config.tts.voices == ["af_sarah", "af_nicole"]
+    assert len(config.tts.providers) == 2
+    assert config.tts.providers[0].backend == "kokoro"
+    assert config.tts.providers[0].voices == ["af_sarah", "af_nicole"]
+    assert config.tts.providers[0].speed == 1.0
+    assert config.tts.providers[1].backend == "piper"
+    assert config.tts.providers[1].voices == ["en_US-amy-low"]
+    assert config.tts.providers[1].speed == 1.2
     assert config.output.format == ["microwakeword", "openwakeword"]
 
 
@@ -154,8 +165,9 @@ def test_load_config_missing_samples(tmp_path: Path) -> None:
         dedent("""
 wake_word: "hey assistant"
 tts:
-  backend: kokoro
-  voices: [af_sarah]
+  providers:
+    - backend: kokoro
+      voices: [af_sarah]
 augmentation:
   noise_snr: [-10, 10]
   reverb_probability: 0.5
@@ -199,8 +211,9 @@ samples:
   positives: 1000
   negatives_multiplier: 5
 tts:
-  backend: kokoro
-  voices: [af_sarah]
+  providers:
+    - backend: kokoro
+      voices: [af_sarah]
 output:
   path: ./datasets
   format: [microwakeword]
@@ -219,8 +232,9 @@ samples:
   positives: 1000
   negatives_multiplier: 5
 tts:
-  backend: kokoro
-  voices: [af_sarah]
+  providers:
+    - backend: kokoro
+      voices: [af_sarah]
 augmentation:
   noise_snr: [-10, 10]
   reverb_probability: 0.5
@@ -246,19 +260,24 @@ def test_samples_negatives_multiplier_must_be_positive() -> None:
 
 def test_tts_backend_cannot_be_empty() -> None:
     with pytest.raises(ConfigError, match="backend cannot be empty"):
-        TTSConfig(backend="", voices=["af_sarah"])
+        TTSProviderConfig(backend="", voices=["af_sarah"])
 
 
 def test_tts_voices_cannot_be_empty() -> None:
     with pytest.raises(ConfigError, match="voices cannot be empty"):
-        TTSConfig(backend="kokoro", voices=[])
+        TTSProviderConfig(backend="kokoro", voices=[])
 
 
 def test_tts_speed_range() -> None:
     with pytest.raises(ConfigError, match="speed must be between 0 and 3"):
-        TTSConfig(backend="kokoro", voices=["af_sarah"], speed=0.0)
+        TTSProviderConfig(backend="kokoro", voices=["af_sarah"], speed=0.0)
     with pytest.raises(ConfigError, match="speed must be between 0 and 3"):
-        TTSConfig(backend="kokoro", voices=["af_sarah"], speed=5.0)
+        TTSProviderConfig(backend="kokoro", voices=["af_sarah"], speed=5.0)
+
+
+def test_tts_config_empty_providers() -> None:
+    with pytest.raises(ConfigError, match="providers cannot be empty"):
+        TTSConfig(providers=[])
 
 
 def test_augmentation_noise_snr_requires_two_values() -> None:
@@ -307,8 +326,9 @@ samples:
   positives: 1000
   negatives_multiplier: 5
 tts:
-  backend: kokoro
-  voices: [af_sarah]
+  providers:
+    - backend: kokoro
+      voices: [af_sarah]
 augmentation:
   noise_snr: [-10, 10]
   reverb_probability: 0.5
@@ -331,8 +351,9 @@ samples:
   positives: 1000
   negatives_multiplier: 5
 tts:
-  backend: kokoro
-  voices: [af_sarah]
+  providers:
+    - backend: kokoro
+      voices: [af_sarah]
 augmentation:
   noise_snr: [-10, 10]
   reverb_probability: 0.5
@@ -359,11 +380,12 @@ samples:
   positives: 1000  # number of positive samples
   negatives_multiplier: 5
 tts:
-  backend: kokoro
-  voices:
-    - af_sarah  # voice 1
-    - af_nicole  # voice 2
-  speed: 1.0
+  providers:
+    - backend: kokoro
+      voices:
+        - af_sarah  # voice 1
+        - af_nicole  # voice 2
+      speed: 1.0
 augmentation:
   noise_snr: [-10, 10]
   reverb_probability: 0.5
@@ -375,7 +397,7 @@ output:
     )
     config = load_config(config_file)
     assert config.wake_word == "hey assistant"
-    assert len(config.tts.voices) == 2
+    assert len(config.tts.providers[0].voices) == 2
 
 
 def test_config_error_inherits_from_exception() -> None:

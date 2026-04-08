@@ -6,6 +6,7 @@ import json
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 class ManifestError(Exception):
@@ -30,9 +31,10 @@ class ManifestEntry:
     label: int
     text: str
     voice: str | None = None
+    backend: str | None = None
     duration_ms: int = 0
     sample_rate: int = 16000
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Validate entry fields."""
@@ -122,6 +124,8 @@ class Manifest:
                 }
                 if entry.voice is not None:
                     entry_dict["voice"] = entry.voice
+                if entry.backend is not None:
+                    entry_dict["backend"] = entry.backend
                 if entry.duration_ms > 0:
                     entry_dict["duration_ms"] = entry.duration_ms
                 if entry.sample_rate != 16000:
@@ -161,6 +165,7 @@ class Manifest:
                             label=data.get("label", 0),
                             text=data.get("text", ""),
                             voice=data.get("voice"),
+                            backend=data.get("backend"),
                             duration_ms=data.get("duration_ms", 0),
                             sample_rate=data.get("sample_rate", 16000),
                             metadata=data.get("metadata", {}),

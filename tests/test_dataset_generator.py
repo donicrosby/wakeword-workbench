@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from textwrap import dedent
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -15,6 +14,7 @@ from wakeword_workbench.config import (
     OutputConfig,
     SamplesConfig,
     TTSConfig,
+    TTSProviderConfig,
 )
 from wakeword_workbench.dataset.generator import (
     DatasetGenerator,
@@ -229,9 +229,16 @@ class TestDatasetGeneratorInstantiation:
             negatives_multiplier=overrides.get("negatives_multiplier", 5),
         )
         tts = TTSConfig(
-            backend=overrides.get("backend", "kokoro"),
-            voices=overrides.get("voices", ["af_sarah"]),
-            speed=overrides.get("speed", 1.0),
+            providers=overrides.get(
+                "providers",
+                [
+                    TTSProviderConfig(
+                        backend=overrides.get("backend", "kokoro"),
+                        voices=overrides.get("voices", ["af_sarah"]),
+                        speed=overrides.get("speed", 1.0),
+                    )
+                ],
+            ),
         )
         augmentation = AugmentationConfig(
             noise_snr=[-10, 10],
@@ -279,13 +286,18 @@ class TestDatasetGeneratorInstantiation:
         assert sample_config.wake_word == "hey_vera"
         assert sample_config.samples.positives == 1000
         assert sample_config.samples.negatives_multiplier == 5
-        assert len(sample_config.tts.voices) == 1
+        assert len(sample_config.tts.providers) == 1
 
     def test_config_validation_occurs_at_config_creation_time(self) -> None:
         """Config validates values at creation, so DatasetGenerator re-validation is redundant."""
         # Config classes validate in __post_init__, so these raise ConfigError (not GeneratorConfigError)
         # These are tested in test_config.py - this test documents the architecture
-        from wakeword_workbench.config import ConfigError, SamplesConfig, TTSConfig
+        from wakeword_workbench.config import (
+            ConfigError,
+            SamplesConfig,
+            TTSConfig,
+            TTSProviderConfig,
+        )
 
         with pytest.raises(ConfigError):
             SamplesConfig(positives=0, negatives_multiplier=5)
@@ -294,7 +306,7 @@ class TestDatasetGeneratorInstantiation:
             SamplesConfig(positives=1000, negatives_multiplier=0)
 
         with pytest.raises(ConfigError):
-            TTSConfig(backend="kokoro", voices=[])
+            TTSConfig(providers=[TTSProviderConfig(backend="kokoro", voices=[])])
 
 
 class TestDatasetGeneratorGenerate:
@@ -341,14 +353,14 @@ class TestDatasetGeneratorGenerate:
     @patch.object(DatasetGenerator, "_save_splits")
     @patch("wakeword_workbench.dataset.generator.PositiveGenerator")
     @patch("wakeword_workbench.dataset.generator.Manifest")
-    @patch("wakeword_workbench.dataset.generator.get_backend")
+    @patch("wakeword_workbench.dataset.generator._create_backend_with_speed")
     @patch("wakeword_workbench.dataset.generator.merge")
     @patch("wakeword_workbench.dataset.generator.split")
     def test_generate_success(
         self,
         mock_split: MagicMock,
         mock_merge: MagicMock,
-        mock_get_backend: MagicMock,
+        mock_create_backend: MagicMock,
         mock_manifest: MagicMock,
         mock_pos_gen: MagicMock,
         mock_save_splits: MagicMock,
@@ -387,7 +399,7 @@ class TestDatasetGeneratorGenerate:
             sample_rate=16000,
             duration=1.0,
         )
-        mock_get_backend.return_value = mock_backend
+        mock_create_backend.return_value = mock_backend
 
         # Setup mock merge
         mock_merge.return_value = mock_combined
@@ -413,6 +425,7 @@ class TestDatasetGeneratorGenerate:
         assert result.total_negatives >= 1
         assert result.total_entries >= 2
         assert result.output_dir == mock_generator.output_dir
+        mock_create_backend.assert_called()
 
 
 class TestDatasetGeneratorNegativePhrases:
@@ -484,33 +497,64 @@ class TestDatasetGeneratorVoiceSelection:
 
     def test_select_voice_round_robin(self, mock_generator: DatasetGenerator) -> None:
         """_select_voice_for_phrase should round-robin through voices."""
-        voices = mock_generator.config.tts.voices
-        assert len(voices) >= 1
+        provider_voices = mock_generator.config.tts.get_all_voices()
+        assert len(provider_voices) >= 1
 
         # First call
-        voice1 = mock_generator._select_voice_for_phrase("phrase 1")
-        assert voice1 == voices[0]
+        provider1, voice1 = mock_generator._select_voice_for_phrase("phrase 1")
+        assert (provider1.backend, voice1) == provider_voices[0]
 
         # Second call
-        voice2 = mock_generator._select_voice_for_phrase("phrase 2")
-        if len(voices) > 1:
-            assert voice2 == voices[1]
+        provider2, voice2 = mock_generator._select_voice_for_phrase("phrase 2")
+        if len(provider_voices) > 1:
+            assert (provider2.backend, voice2) == provider_voices[1]
         else:
-            assert voice2 == voices[0]
+            assert (provider2.backend, voice2) == provider_voices[0]
 
     def test_select_voice_wraps_around(self, mock_generator: DatasetGenerator) -> None:
         """_select_voice_for_phrase should wrap around after all voices used."""
-        voices = mock_generator.config.tts.voices
-        if len(voices) < 2:
+        provider_voices = mock_generator.config.tts.get_all_voices()
+        if len(provider_voices) < 2:
             pytest.skip("Need at least 2 voices to test wrapping")
 
         # Call more times than there are voices
-        for i in range(len(voices) + 1):
+        for i in range(len(provider_voices) + 1):
             mock_generator._select_voice_for_phrase(f"phrase {i}")
 
         # Next call should wrap to first voice
-        voice = mock_generator._select_voice_for_phrase("wrapped phrase")
-        assert voice == voices[0]
+        provider, voice = mock_generator._select_voice_for_phrase("wrapped phrase")
+        assert (provider.backend, voice) == provider_voices[0]
+
+    def test_select_voice_round_robin_across_multiple_providers(self, tmp_path: Path) -> None:
+        """_select_voice_for_phrase should cycle across all backend-voice pairs."""
+        config = Config(
+            wake_word="hey_vera",
+            samples=SamplesConfig(positives=100, negatives_multiplier=5),
+            tts=TTSConfig(
+                providers=[
+                    TTSProviderConfig(backend="kokoro", voices=["v1", "v2"], speed=1.0),
+                    TTSProviderConfig(backend="piper", voices=["v3"], speed=1.0),
+                ]
+            ),
+            augmentation=AugmentationConfig(
+                noise_snr=[-10, 10],
+                reverb_probability=0.5,
+                gain_range=[-45, 0],
+            ),
+            output=OutputConfig(path=str(tmp_path / "output"), format=["microwakeword"]),
+        )
+        generator = DatasetGenerator(config, output_dir=tmp_path / "dataset")
+
+        sequence = [generator._select_voice_for_phrase(f"phrase {i}") for i in range(6)]
+
+        assert [(provider.backend, voice) for provider, voice in sequence] == [
+            ("kokoro", "v1"),
+            ("kokoro", "v2"),
+            ("piper", "v3"),
+            ("kokoro", "v1"),
+            ("kokoro", "v2"),
+            ("piper", "v3"),
+        ]
 
 
 class TestDatasetGeneratorHelpers:
@@ -523,7 +567,7 @@ class TestDatasetGeneratorHelpers:
 
     def test_ensure_output_dir_creates_directory(self, mock_generator: DatasetGenerator) -> None:
         """_ensure_output_dir should create the directory if it doesn't exist."""
-        result = mock_generator._ensure_output_dir()
+        mock_generator._ensure_output_dir()
         assert mock_generator.output_dir.exists()
         assert mock_generator.output_dir.is_dir()
 

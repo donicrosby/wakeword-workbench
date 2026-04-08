@@ -6,6 +6,7 @@ config-based pipeline loading, and common preset pipelines.
 
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -170,7 +171,7 @@ def from_config(config: dict[str, Any] | str | Path) -> Compose:
 
         suffix = config_path.suffix.lower()
         if suffix in (".yaml", ".yml"):
-            import yaml
+            yaml = import_module("yaml")
 
             with open(config_path, encoding="utf-8") as f:
                 config = yaml.safe_load(f)

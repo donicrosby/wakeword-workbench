@@ -328,7 +328,6 @@ class TestTrimSilence:
         ts = TrimSilence()
 
         # Patch librosa import to simulate it not being installed
-        import sys
 
         original_import = __builtins__["__import__"]
 

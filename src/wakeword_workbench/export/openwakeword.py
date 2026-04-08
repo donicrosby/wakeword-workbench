@@ -15,6 +15,7 @@ from typing import Literal
 
 import librosa
 import numpy as np
+from numpy.typing import NDArray
 
 from wakeword_workbench.augment.audio_loader import AudioLoadError, load_audio
 from wakeword_workbench.augment.padding import FixedSizeClip
@@ -48,7 +49,7 @@ def _extract_mel_features(
     n_mels: int = 96,
     n_fft: int = 512,
     hop_length: int = 160,
-) -> np.ndarray:
+) -> NDArray[np.float32]:
     """Extract mel-spectrogram features.
 
     Args:
@@ -72,7 +73,7 @@ def _extract_mel_features(
     )
     # Convert to log scale (dB)
     log_mel = librosa.power_to_db(mel_spec, ref=np.max)
-    return log_mel.astype(np.float32)
+    return np.asarray(log_mel, dtype=np.float32)
 
 
 def export_to_numpy(
@@ -209,8 +210,8 @@ def export_to_numpy(
         x_path=str(X_path),
         y_path=str(y_path),
         shape=X.shape,
-        positive_count=sum(1 for l in labels if l == 1),
-        negative_count=sum(1 for l in labels if l == 0),
+        positive_count=sum(1 for label in labels if label == 1),
+        negative_count=sum(1 for label in labels if label == 0),
     )
 
     return X_path, y_path

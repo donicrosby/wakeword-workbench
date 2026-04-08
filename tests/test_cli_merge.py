@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
 from wakeword_workbench.cli import app
 
 runner = CliRunner()
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from text."""
+    return _ANSI_RE.sub("", text)
 
 
 class TestMergeCommandHelp:
@@ -19,12 +26,13 @@ class TestMergeCommandHelp:
     def test_merge_command_help(self) -> None:
         """Test that merge command shows help with all options."""
         result = runner.invoke(app, ["merge", "--help"])
+        plain = _strip_ansi(result.stdout)
         assert result.exit_code == 0
-        assert "merge" in result.stdout
-        assert "--source" in result.stdout
-        assert "--target" in result.stdout
-        assert "--backup" in result.stdout
-        assert "hard negatives" in result.stdout.lower()
+        assert "merge" in plain
+        assert "--source" in plain
+        assert "--target" in plain
+        assert "--backup" in plain
+        assert "hard negatives" in plain.lower()
 
 
 class TestMergeCommandValidation:

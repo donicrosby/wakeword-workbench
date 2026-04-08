@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 
-import yaml
+yaml = import_module("yaml")
 
 SUPPORTED_OUTPUT_FORMATS = {"microwakeword", "openwakeword"}
 
@@ -31,8 +32,8 @@ class SamplesConfig:
 
 
 @dataclass
-class TTSConfig:
-    """TTS configuration."""
+class TTSProviderConfig:
+    """TTS provider configuration."""
 
     backend: str
     voices: list[str]
@@ -45,6 +46,36 @@ class TTSConfig:
             raise ConfigError("voices cannot be empty")
         if not 0 < self.speed <= 3:
             raise ConfigError("speed must be between 0 and 3")
+
+
+@dataclass
+class TTSConfig:
+    """TTS configuration with multiple providers support."""
+
+    providers: list[TTSProviderConfig]
+
+    def __post_init__(self) -> None:
+        if not self.providers:
+            raise ConfigError("providers cannot be empty")
+        for provider in self.providers:
+            if not provider.backend:
+                raise ConfigError("backend cannot be empty")
+            if not provider.voices:
+                raise ConfigError("voices cannot be empty")
+            if not 0 < provider.speed <= 3:
+                raise ConfigError("speed must be between 0 and 3")
+
+    def get_all_voices(self) -> list[tuple[str, str]]:
+        """Get all voices as (backend, voice) tuples.
+
+        Returns:
+            List of tuples where each tuple is (backend_name, voice_id).
+        """
+        voices: list[tuple[str, str]] = []
+        for provider in self.providers:
+            for voice in provider.voices:
+                voices.append((provider.backend, voice))
+        return voices
 
 
 @dataclass
@@ -130,11 +161,26 @@ def load_config(path: str | Path) -> Config:
     if "tts" not in data:
         raise ConfigError("Missing required field: tts")
     tts_data = data["tts"]
-    tts = TTSConfig(
-        backend=tts_data["backend"],
-        voices=tts_data["voices"],
-        speed=tts_data.get("speed", 1.0),
-    )
+
+    if "providers" not in tts_data:
+        raise ConfigError("Missing required field: tts.providers")
+
+    providers_list = tts_data.get("providers", [])
+    if not isinstance(providers_list, list):
+        raise ConfigError("tts.providers must be a list")
+
+    providers: list[TTSProviderConfig] = []
+    for provider_data in providers_list:
+        if not isinstance(provider_data, dict):
+            raise ConfigError("Each provider must be a dictionary")
+        provider = TTSProviderConfig(
+            backend=provider_data["backend"],
+            voices=provider_data["voices"],
+            speed=provider_data.get("speed", 1.0),
+        )
+        providers.append(provider)
+
+    tts = TTSConfig(providers=providers)
 
     if "augmentation" not in data:
         raise ConfigError("Missing required field: augmentation")

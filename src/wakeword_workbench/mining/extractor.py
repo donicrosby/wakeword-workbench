@@ -5,16 +5,17 @@ saving them with metadata for use as hard negatives in training.
 """
 
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 
 import librosa
-import soundfile as sf
 
 from wakeword_workbench.logging_config import get_logger
 
 from .long_audio import WindowPrediction
 
 log = get_logger(__name__)
+sf = import_module("soundfile")
 
 
 @dataclass

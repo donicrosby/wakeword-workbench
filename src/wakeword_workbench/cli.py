@@ -171,7 +171,13 @@ def validate_command(
         log.info("validating-config", config=str(config_path))
         console.print(f"[bold]Wake word:[/bold] {config.wake_word}")
         console.print(f"[bold]Samples:[/bold] {config.samples.positives} positives")
-        console.print(f"[bold]TTS backend:[/bold] {config.tts.backend}")
+        console.print("[bold]TTS providers:[/bold]")
+        for provider in config.tts.providers:
+            voice_label = "voice" if len(provider.voices) == 1 else "voices"
+            console.print(
+                f"  - {provider.backend} ({len(provider.voices)} {voice_label})"
+                f" speed={provider.speed}"
+            )
     except ConfigError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(code=EXIT_CONFIG_ERROR) from None

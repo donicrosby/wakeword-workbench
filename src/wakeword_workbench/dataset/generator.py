@@ -10,16 +10,19 @@ from typing import Any
 
 import numpy as np
 
-from wakeword_workbench.config import Config
+from wakeword_workbench.config import Config, TTSProviderConfig
 from wakeword_workbench.logging_config import get_logger
 from wakeword_workbench.negatives.phrase_generator import generate_confusions
 from wakeword_workbench.negatives.synthetic_generator import generate_synthetic_negatives
 from wakeword_workbench.tts.base import TTSBackend, TTSError
-from wakeword_workbench.tts.registry import get_backend
 
 from .merger import MergerError, merge
 from .metadata import Manifest, ManifestEntry, ManifestError
-from .positive_generator import PositiveGenerator, PositiveGeneratorError
+from .positive_generator import (
+    PositiveGenerator,
+    PositiveGeneratorError,
+    _create_backend_with_speed,
+)
 from .splitter import SplitValidationError, split
 
 log = get_logger(__name__)
@@ -112,19 +115,20 @@ class DatasetGenerator:
             raise GeneratorConfigError("samples.positives must be positive")
         if config.samples.negatives_multiplier <= 0:
             raise GeneratorConfigError("samples.negatives_multiplier must be positive")
-        if not config.tts.voices:
-            raise GeneratorConfigError("tts.voices cannot be empty")
+        if not config.tts.providers:
+            raise GeneratorConfigError("tts.providers cannot be empty")
 
         self.config = config
         self.output_dir = Path(output_dir) if output_dir is not None else Path(config.output.path)
         self._voice_index = 0
         self._validate_files = False
+        self._providers = config.tts.providers
 
         log.info(
             "dataset_generator_init",
             wake_word=self.config.wake_word,
-            tts_backend=self.config.tts.backend,
-            voices=len(self.config.tts.voices),
+            providers=[provider.backend for provider in self._providers],
+            voices=len(self.config.tts.get_all_voices()),
             output_dir=str(self.output_dir),
         )
 
@@ -374,20 +378,35 @@ class DatasetGenerator:
         Raises:
             GeneratorTTSError: TTS synthesis failed.
         """
-        backend = self._get_tts_backend()
         negatives_dir = self.output_dir / "negatives"
         negatives_dir.mkdir(parents=True, exist_ok=True)
 
         entries: list[ManifestEntry] = []
         failed = 0
+        backend_cache: dict[tuple[str, tuple[str, ...], float], TTSBackend] = {}
 
         for index, phrase in enumerate(phrases):
-            voice = self._select_voice_for_phrase(phrase)
+            provider, voice = self._select_voice_for_phrase(phrase)
             filename = f"negative_{index:06d}.wav"
             file_path = negatives_dir / filename
+            provider_key = (provider.backend, tuple(provider.voices), provider.speed)
 
             try:
-                backend.set_voice(voice)
+                backend = backend_cache.get(provider_key)
+                if backend is None:
+                    backend = _create_backend_with_speed(provider.backend, provider.speed)
+                    backend_cache[provider_key] = backend
+
+                try:
+                    backend.set_voice(voice)
+                except NotImplementedError as exc:
+                    log.warning(
+                        "negative_voice_set_not_supported",
+                        backend=provider.backend,
+                        voice=voice,
+                        error=str(exc),
+                    )
+
                 result = backend.synthesize(phrase)
                 audio = self._ensure_format(result.audio, result.sample_rate)
                 audio = self._ensure_mono(audio)
@@ -401,6 +420,7 @@ class DatasetGenerator:
                         label=0,
                         text=phrase,
                         voice=voice,
+                        backend=provider.backend,
                         duration_ms=duration_ms,
                         sample_rate=16000,
                     )
@@ -409,6 +429,7 @@ class DatasetGenerator:
                 failed += 1
                 log.warning(
                     "negative_tts_failed",
+                    backend=provider.backend,
                     phrase=phrase,
                     voice=voice,
                     error=str(exc),
@@ -429,24 +450,8 @@ class DatasetGenerator:
         )
         return Manifest(entries)
 
-    def _get_tts_backend(self) -> TTSBackend:
-        """Get configured TTS backend.
-
-        Returns:
-            TTS backend instance.
-
-        Raises:
-            GeneratorConfigError: Backend unavailable.
-        """
-        try:
-            return get_backend(self.config.tts.backend)
-        except Exception as exc:
-            raise GeneratorConfigError(
-                f"Failed to initialize TTS backend '{self.config.tts.backend}': {exc}"
-            ) from exc
-
-    def _select_voice_for_phrase(self, phrase: str) -> str:
-        """Select a voice for synthesizing a phrase.
+    def _select_voice_for_phrase(self, phrase: str) -> tuple[TTSProviderConfig, str]:
+        """Select a provider and voice for synthesizing a phrase.
 
         Uses round-robin across configured voices.
 
@@ -454,13 +459,15 @@ class DatasetGenerator:
             phrase: Phrase to be synthesized.
 
         Returns:
-            Voice identifier.
+            Tuple of (provider_config, voice_identifier).
         """
         del phrase  # phrase reserved for future voice selection strategies
-        voices = self.config.tts.voices
-        voice = voices[self._voice_index % len(voices)]
+        provider_voices = [
+            (provider, voice) for provider in self._providers for voice in provider.voices
+        ]
+        provider, voice = provider_voices[self._voice_index % len(provider_voices)]
         self._voice_index += 1
-        return voice
+        return provider, voice
 
     def _merge_manifests(
         self,
@@ -608,7 +615,7 @@ class DatasetGenerator:
 
         librosa = import_module("librosa")
         resampled = librosa.resample(audio, orig_sr=sample_rate, target_sr=16000)
-        return resampled.astype(np.float32)
+        return np.asarray(resampled, dtype=np.float32)
 
     def _ensure_mono(self, audio: np.ndarray) -> np.ndarray:
         """Convert multi-channel audio to mono.
@@ -620,8 +627,8 @@ class DatasetGenerator:
             Mono audio samples.
         """
         if audio.ndim > 1:
-            return audio.mean(axis=1)
-        return audio
+            return np.asarray(audio.mean(axis=1), dtype=np.float32)
+        return np.asarray(audio, dtype=np.float32)
 
 
 __all__ = [

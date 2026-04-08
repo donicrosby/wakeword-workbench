@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+import inspect
 import json
+from importlib import import_module
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
-import soundfile as sf
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
-from wakeword_workbench.config import Config
+from wakeword_workbench.config import Config, TTSProviderConfig
 from wakeword_workbench.logging_config import get_logger
-from wakeword_workbench.tts.base import TTSError
-from wakeword_workbench.tts.registry import get_backend
+from wakeword_workbench.tts.base import TTSBackend, TTSError
+from wakeword_workbench.tts.registry import _BACKENDS, list_available_backends
 
 from .phrase_variants import generate_variants
 
@@ -23,6 +25,34 @@ class PositiveGeneratorError(Exception):
     """Raised when positive sample generation fails critically."""
 
     pass
+
+
+def _create_backend_with_speed(backend_name: str, speed: float) -> TTSBackend:
+    """Create a TTS backend, passing speed when supported.
+
+    Args:
+        backend_name: Registered backend name.
+        speed: Requested synthesis speed for the provider.
+
+    Returns:
+        Instantiated TTS backend.
+
+    Raises:
+        TTSError: If the backend is unknown or cannot be instantiated.
+    """
+    list_available_backends()
+    backend_cls = _BACKENDS.get(backend_name)
+    if backend_cls is None:
+        available = ", ".join(sorted(_BACKENDS)) or "none"
+        raise TTSError(f"Unknown TTS backend: '{backend_name}'. Available backends: {available}")
+
+    signature = inspect.signature(backend_cls.__init__)
+    if "speed" in signature.parameters:
+        backend_factory: Any = backend_cls
+        return cast(TTSBackend, backend_factory(speed=speed))
+
+    log.warning("backend_no_speed_support", backend=backend_name, speed=speed)
+    return backend_cls()
 
 
 class PositiveGenerator:
@@ -49,8 +79,7 @@ class PositiveGenerator:
         self.config = config
         self.output_dir = Path(output_dir)
         self._wake_word = config.wake_word
-        self._voices = config.tts.voices
-        self._backend_name = config.tts.backend
+        self._providers = config.tts.providers
 
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -58,8 +87,8 @@ class PositiveGenerator:
         log.info(
             "positive_generator_init",
             wake_word=self._wake_word,
-            backend=self._backend_name,
-            voices=self._voices,
+            providers=[provider.backend for provider in self._providers],
+            voices=config.tts.get_all_voices(),
             output_dir=str(self.output_dir),
         )
 
@@ -83,12 +112,6 @@ class PositiveGenerator:
 
         log.info("generating_positive_samples", count=count)
 
-        # Get TTS backend
-        try:
-            backend = get_backend(self._backend_name)
-        except Exception as e:
-            raise PositiveGeneratorError(f"Failed to get TTS backend: {e}") from e
-
         # Generate text variants
         variants = generate_variants(self._wake_word)
         if not variants:
@@ -98,11 +121,12 @@ class PositiveGenerator:
 
         log.info("variants_generated", count=len(variants), variants=variants[:3])
 
-        # Build generation list: (phrase, voice) combinations
-        combinations: list[tuple[str, str]] = []
+        # Build generation list: (provider, phrase, voice) combinations
+        combinations: list[tuple[TTSProviderConfig, str, str]] = []
         for variant in variants:
-            for voice in self._voices:
-                combinations.append((variant, voice))
+            for provider in self._providers:
+                for voice in provider.voices:
+                    combinations.append((provider, variant, voice))
 
         # Calculate actual samples to generate (may be more or less than count)
         # We generate all combinations and return count of them
@@ -127,9 +151,14 @@ class PositiveGenerator:
             )
 
             # Generate samples
-            for phrase, voice in combinations:
+            for provider, phrase, voice in combinations:
                 if generated_count >= total_needed:
                     break
+
+                try:
+                    backend = _create_backend_with_speed(provider.backend, provider.speed)
+                except Exception as e:
+                    raise PositiveGeneratorError(f"Failed to get TTS backend: {e}") from e
 
                 # Set voice for this backend
                 try:
@@ -137,6 +166,13 @@ class PositiveGenerator:
                 except TTSError as e:
                     log.warning("voice_set_failed", voice=voice, error=str(e))
                     continue
+                except NotImplementedError as e:
+                    log.warning(
+                        "voice_set_not_supported",
+                        backend=provider.backend,
+                        voice=voice,
+                        error=str(e),
+                    )
 
                 # Generate samples for this combination
                 for _sample_idx in range(samples_per_combination):
@@ -156,7 +192,8 @@ class PositiveGenerator:
                         audio = self._ensure_mono(audio)
 
                         # Save WAV file
-                        sf.write(file_path, audio, 16000)
+                        soundfile = import_module("soundfile")
+                        soundfile.write(file_path, audio, 16000)
 
                         # Calculate duration in milliseconds
                         duration_ms = int(len(audio) / 16000 * 1000)
@@ -168,6 +205,7 @@ class PositiveGenerator:
                                 "label": 1,
                                 "text": phrase,
                                 "voice": voice,
+                                "backend": provider.backend,
                                 "duration_ms": duration_ms,
                             }
                         )
@@ -181,6 +219,7 @@ class PositiveGenerator:
                         failed_count += 1
                         log.warning(
                             "tts_synthesis_failed",
+                            backend=provider.backend,
                             phrase=phrase,
                             voice=voice,
                             error=str(e),
@@ -190,6 +229,7 @@ class PositiveGenerator:
                         failed_count += 1
                         log.error(
                             "unexpected_error",
+                            backend=provider.backend,
                             phrase=phrase,
                             voice=voice,
                             error=str(e),

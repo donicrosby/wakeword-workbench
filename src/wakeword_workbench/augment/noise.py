@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import random
+from importlib import import_module
 from pathlib import Path
 from typing import Literal
 
 import numpy as np
-import soundfile as sf
 from numpy.typing import NDArray
 
 from wakeword_workbench.logging_config import get_logger
@@ -90,12 +90,13 @@ class AddNoise:
         => scale = sqrt(noise_power / current_noise_power)
         """
         target_noise_power = signal_power / (10 ** (target_snr_db / 10))
-        return np.sqrt(target_noise_power)
+        return float(np.sqrt(target_noise_power))
 
     def _load_noise_file(self, path: Path, target_length: int, sr: int) -> NDArray[np.float32]:
         """Load a noise file and adjust to match target length."""
         try:
-            noise, noise_sr = sf.read(path, always_2d=False, dtype="float32")
+            soundfile = import_module("soundfile")
+            noise, noise_sr = soundfile.read(path, always_2d=False, dtype="float32")
         except Exception as e:
             raise ValueError(f"Failed to load noise file {path}: {e}") from e
 
@@ -127,7 +128,7 @@ class AddNoise:
         # Truncate to exact length
         noise = noise[:target_length]
 
-        return noise.astype(np.float32)
+        return np.asarray(noise, dtype=np.float32)
 
     def _normalize_output(self, audio: NDArray[np.floating]) -> NDArray[np.float32]:
         """Normalize audio to [-1, 1] range after mixing."""
@@ -232,9 +233,8 @@ class AddColoredNoise:
         a = np.array([1.0, -1.747, 1.823, -1.129, 0.874, -0.514, 0.178])
 
         try:
-            from scipy.signal import lfilter
-
-            pink = lfilter(b, a, white)
+            scipy_signal = import_module("scipy.signal")
+            pink = scipy_signal.lfilter(b, a, white)
             return np.asarray(pink, dtype=np.float32)
         except ImportError:
             # Fallback: simple IIR approximation
@@ -301,7 +301,7 @@ class AddColoredNoise:
     ) -> float:
         """Calculate noise scale factor to achieve target SNR."""
         target_noise_power = signal_power / (10 ** (target_snr_db / 10))
-        return np.sqrt(target_noise_power)
+        return float(np.sqrt(target_noise_power))
 
     def _normalize_output(self, audio: NDArray[np.floating]) -> NDArray[np.float32]:
         """Normalize audio to [-1, 1] range after mixing."""

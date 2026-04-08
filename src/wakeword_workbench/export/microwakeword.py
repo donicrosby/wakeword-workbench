@@ -6,6 +6,7 @@ from pathlib import Path
 
 import librosa
 import numpy as np
+from numpy.typing import NDArray
 
 from wakeword_workbench.augment.audio_loader import load_audio
 from wakeword_workbench.dataset.metadata import Manifest
@@ -26,7 +27,7 @@ def compute_mel_spectrogram(
     n_mels: int = 40,
     hop_length: int = 480,
     n_fft: int = 2048,
-) -> np.ndarray:
+) -> NDArray[np.float32]:
     """Compute mel-spectrogram features from audio.
 
     Args:
@@ -48,7 +49,7 @@ def compute_mel_spectrogram(
     )
     # Convert to log scale (dB)
     log_mel = librosa.power_to_db(mel_spec, ref=np.max)
-    return log_mel.astype(np.float32)
+    return np.asarray(log_mel, dtype=np.float32)
 
 
 def export_to_mmap(

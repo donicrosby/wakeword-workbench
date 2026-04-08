@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from importlib import import_module
+from typing import Any, ClassVar, Protocol, cast
 
 import numpy as np
 
 # Optional dependency - graceful fallback if not installed
 try:
-    from pykokoro import KokoroPipeline, PipelineConfig, GenerationConfig
+    pykokoro = import_module("pykokoro")
+    GenerationConfig = pykokoro.GenerationConfig
+    KokoroPipeline = pykokoro.KokoroPipeline
+    PipelineConfig = pykokoro.PipelineConfig
 
     _PYKOKORO_AVAILABLE = True
 except ImportError:
@@ -38,6 +42,15 @@ _COMMON_VOICES = [
 ]
 
 
+class _KokoroAudioResult(Protocol):
+    audio: Any
+    sample_rate: int
+
+
+class _KokoroPipelineLike(Protocol):
+    def run(self, text: str, voice: str, generation: Any) -> _KokoroAudioResult: ...
+
+
 class KokoroBackend(TTSBackend):
     """Kokoro TTS backend using pykokoro.
 
@@ -53,7 +66,7 @@ class KokoroBackend(TTSBackend):
         TTSError: If initialization fails.
     """
 
-    _pipeline: ClassVar[KokoroPipeline | None] = None  # type: ignore[type-arg]
+    _pipeline: ClassVar[_KokoroPipelineLike | None] = None
 
     def __init__(self, voice: str = "af_sarah", speed: float = 1.0) -> None:
         if not _PYKOKORO_AVAILABLE:
@@ -70,7 +83,11 @@ class KokoroBackend(TTSBackend):
         # Initialize pipeline lazily to avoid loading models at import time
         if KokoroBackend._pipeline is None:
             try:
-                KokoroBackend._pipeline = KokoroPipeline(PipelineConfig())  # type: ignore[operator]
+                pipeline_cls: Any = KokoroPipeline
+                pipeline_config_cls: Any = PipelineConfig
+                KokoroBackend._pipeline = cast(
+                    _KokoroPipelineLike, pipeline_cls(pipeline_config_cls())
+                )
             except Exception as e:
                 raise TTSError(f"Failed to initialize Kokoro pipeline: {e}") from e
 
@@ -109,12 +126,17 @@ class KokoroBackend(TTSBackend):
         if cached_result is not None:
             return cached_result
 
+        pipeline = self._pipeline
+        if pipeline is None:
+            raise TTSError("Kokoro pipeline not initialized")
+
         try:
             # Generate audio using pykokoro with speed
-            audio_result = self._pipeline.run(  # type: ignore[union-attr, misc]
+            generation_config_cls: Any = GenerationConfig
+            audio_result = pipeline.run(
                 text,
                 voice=self._voice,
-                generation=GenerationConfig(speed=self._speed),  # type: ignore[operator]
+                generation=generation_config_cls(speed=self._speed),
             )
 
             # Extract audio and sample rate from AudioResult
@@ -137,7 +159,7 @@ class KokoroBackend(TTSBackend):
                 audio_16k = audio_24k
 
             # Ensure float32 after resampling
-            audio_16k = audio_16k.astype(np.float32)
+            audio_16k = np.asarray(audio_16k, dtype=np.float32)
 
             # Normalize to [-1, 1] if needed
             max_val = np.abs(audio_16k).max()

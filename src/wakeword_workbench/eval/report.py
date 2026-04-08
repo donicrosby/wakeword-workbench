@@ -71,8 +71,8 @@ def _calculate_eer(
     """
     threshold_values = np.linspace(0.0, 1.0, num=thresholds)
 
-    far_values = []
-    frr_values = []
+    far_values: list[float] = []
+    frr_values: list[float] = []
 
     for t in threshold_values:
         threshold = float(t)
@@ -81,20 +81,20 @@ def _calculate_eer(
         far_values.append(far)
         frr_values.append(frr)
 
-    far_values = np.array(far_values)
-    frr_values = np.array(frr_values)
+    far_array = np.asarray(far_values, dtype=np.float64)
+    frr_array = np.asarray(frr_values, dtype=np.float64)
 
     # Normalize FAR to same scale as FRR for comparison.
     # FRR is in [0,1]; FAR is false accepts/hour which could be any positive value.
     # Normalize FAR so both are on [0,1] for EER calculation.
-    max_far = far_values.max()
+    max_far = float(far_array.max())
     if max_far > 0:
-        norm_far = far_values / max_far
+        norm_far = far_array / max_far
     else:
-        norm_far = far_values.copy()
+        norm_far = far_array.copy()
 
     # Find the index where normalized FAR and FRR cross.
-    diff = norm_far - frr_values
+    diff = norm_far - frr_array
 
     # Find sign changes.
     sign_changes = np.where(np.diff(np.sign(diff)))[0]
@@ -102,7 +102,7 @@ def _calculate_eer(
     if len(sign_changes) == 0:
         # No crossing found — pick the closest point.
         closest_idx = int(np.argmin(np.abs(diff)))
-        return float(frr_values[closest_idx]), float(threshold_values[closest_idx])
+        return float(frr_array[closest_idx]), float(threshold_values[closest_idx])
 
     idx = int(sign_changes[0])
 

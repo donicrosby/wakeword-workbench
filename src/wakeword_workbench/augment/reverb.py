@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
 
 import numpy as np
-import scipy.signal
-import soundfile as sf
 
 from wakeword_workbench.logging_config import get_logger
 
@@ -119,7 +118,8 @@ class AddReverb:
             rir = cached
         else:
             try:
-                rir, rir_sr = sf.read(path, dtype="float32")
+                soundfile = import_module("soundfile")
+                rir, rir_sr = soundfile.read(path, dtype="float32")
             except Exception as e:
                 raise ReverbError(f"Failed to load RIR from '{path}': {e}") from e
 
@@ -153,7 +153,7 @@ class AddReverb:
         duration = len(rir) / orig_sr
         new_length = int(duration * target_sr)
         indices = np.linspace(0, len(rir) - 1, new_length)
-        return np.interp(indices, np.arange(len(rir)), rir)
+        return np.asarray(np.interp(indices, np.arange(len(rir)), rir), dtype=np.float32)
 
     def _select_random_rir(self) -> Path:
         """Select a random RIR file.
@@ -201,8 +201,8 @@ class AddReverb:
 
         tail_length = np.sum(above_threshold)
         # Approximate RT60 (assumes uniform decay)
-        rt60_samples = tail_length * 2  # Rough estimate
-        return rt60_samples / 16000
+        rt60_samples = int(tail_length) * 2  # Rough estimate
+        return float(rt60_samples / 16000)
 
     def apply(self, audio: np.ndarray, sr: int) -> np.ndarray:
         """Apply reverb augmentation to audio.
@@ -232,7 +232,8 @@ class AddReverb:
         rir_path = self._select_random_rir()
 
         try:
-            rir, rir_sr = sf.read(rir_path, dtype="float32")
+            soundfile = import_module("soundfile")
+            rir, rir_sr = soundfile.read(rir_path, dtype="float32")
         except Exception as e:
             log.warning("rir_load_failed", path=str(rir_path), error=str(e))
             return audio
@@ -252,7 +253,8 @@ class AddReverb:
         # For short audio and typical RIRs, direct convolution is fine
         try:
             # Use 'same' mode to keep output same length as input
-            reverb_audio = scipy.signal.fftconvolve(audio, rir, mode="same")
+            scipy_signal = import_module("scipy.signal")
+            reverb_audio = scipy_signal.fftconvolve(audio, rir, mode="same")
         except Exception as e:
             raise ReverbError(f"Convolution failed: {e}") from e
 
@@ -265,4 +267,4 @@ class AddReverb:
         rt60 = self.estimate_rt60(rir)
         log.debug("reverb_applied", rir_path=rir_path.name, rt60=round(rt60, 2), sr=sr)
 
-        return reverb_audio.astype(np.float32)
+        return np.asarray(reverb_audio, dtype=np.float32)

@@ -7,6 +7,7 @@ in callable interfaces suitable for wake word detection tasks.
 from __future__ import annotations
 
 from collections.abc import Callable
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -40,9 +41,7 @@ def _check_onnxruntime_available() -> Any:
         ModelLoadError: If onnxruntime is not installed.
     """
     try:
-        import onnxruntime as ort  # noqa: F401
-
-        return ort
+        return import_module("onnxruntime")
     except ImportError:
         raise ModelLoadError(
             "onnxruntime is required for model inference. Install it with: uv add onnxruntime"

@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import urllib.request
+from importlib import import_module
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, BinaryIO, ClassVar, Protocol, cast
 
 import numpy as np
-import soundfile as sf
 
 from wakeword_workbench.tts.base import (
     BackendNotAvailableError,
@@ -16,11 +16,12 @@ from wakeword_workbench.tts.base import (
     TTSError,
     TTSResult,
 )
+
 from .cache import get_default_cache
 
 # Try to import piper, but allow graceful fallback
 try:
-    from piper import PiperVoice
+    PiperVoice = import_module("piper").PiperVoice
 
     _PIPER_AVAILABLE = True
 except ImportError:
@@ -36,6 +37,10 @@ _DEFAULT_MODEL_URL = (
     f"https://github.com/rhasspy/piper/releases/download/2024.11.14-2/{_DEFAULT_MODEL_NAME}.onnx"
 )
 _PIPER_MODEL_CACHE_DIR = Path.home() / ".cache" / "wakeword_workbench" / "piper_models"
+
+
+class _PiperVoiceLike(Protocol):
+    def synthesize_wav(self, text: str, wav_file: BinaryIO) -> None: ...
 
 
 class PiperBackend(TTSBackend):
@@ -77,7 +82,7 @@ class PiperBackend(TTSBackend):
             )
 
         self.use_cuda = use_cuda
-        self._voice: PiperVoice | None = None  # type: ignore[name-defined]
+        self._voice: _PiperVoiceLike | None = None
 
         # Resolve model_path: use provided path or download default
         if model_path is None:
@@ -92,7 +97,8 @@ class PiperBackend(TTSBackend):
 
         try:
             # Load the Piper voice model
-            self._voice = PiperVoice.load(str(self.model_path))  # type: ignore[union-attr]
+            piper_voice_class: Any = PiperVoice
+            self._voice = cast(_PiperVoiceLike, piper_voice_class.load(str(self.model_path)))
         except Exception as e:
             raise TTSError(f"Failed to load Piper model: {e}") from e
 
@@ -157,14 +163,15 @@ class PiperBackend(TTSBackend):
             wav_buffer.seek(0)
 
             # Read the WAV data using soundfile
-            audio_data, sample_rate = sf.read(wav_buffer, dtype="float32")
+            soundfile = import_module("soundfile")
+            audio_data, sample_rate = soundfile.read(wav_buffer, dtype="float32")
 
             # Handle stereo audio (convert to mono)
             if len(audio_data.shape) > 1:
                 audio_data = np.mean(audio_data, axis=1)
 
             # Ensure float32
-            audio_data = audio_data.astype(np.float32)
+            audio_data = np.asarray(audio_data, dtype=np.float32)
 
             # Resample from 22050 Hz to 16000 Hz using scipy
             audio_data = self._resample(audio_data, sample_rate, self._TARGET_SAMPLE_RATE)
@@ -255,14 +262,14 @@ class PiperBackend(TTSBackend):
         if orig_sr == target_sr:
             return audio
 
-        from scipy.signal import resample_poly
+        scipy_signal = import_module("scipy.signal")
 
         # Use rational approximation for common sample rate conversions
         gcd = np.gcd(orig_sr, target_sr)
         up = target_sr // gcd
         down = orig_sr // gcd
 
-        return resample_poly(audio, up, down).astype(np.float32)
+        return np.asarray(scipy_signal.resample_poly(audio, up, down), dtype=np.float32)
 
     @classmethod
     def is_available(cls) -> bool:

@@ -11,6 +11,7 @@ Before troubleshooting deeper issues, verify the baseline environment:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
+uv run pre-commit install
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -233,10 +234,10 @@ def convert_to_ragged_mmap(
     class_name: str = "wakeword",
 ):
     """Convert audio clips to microWakeWord RaggedMmap format."""
-    
+
     output_path = output_dir / split / f"{class_name}_mmap"
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Generate microfrontend features for each clip
     spectrograms = []
     for audio in audio_clips:
@@ -248,7 +249,7 @@ def convert_to_ragged_mmap(
             num_channels=40,
         )
         spectrograms.append(spec)  # Shape: (time_frames, 40)
-    
+
     # Write as RaggedMmap
     RaggedMmap.from_generator(
         out_dir=str(output_path),
@@ -452,9 +453,9 @@ def extract_embeddings_fixed_duration(
     target_samples: int = 32000,  # 2 seconds at 16 kHz
 ):
     """Extract embeddings with fixed duration."""
-    
+
     features = AudioFeatures(device="cpu")
-    
+
     # Pad/crop to fixed length
     fixed_clips = []
     for audio in audio_clips:
@@ -463,11 +464,11 @@ def extract_embeddings_fixed_duration(
         else:
             audio = audio[:target_samples]
         fixed_clips.append(audio.astype(np.int16))
-    
+
     # Stack and extract
     audio_batch = np.stack(fixed_clips)
     embeddings = features.embed_clips(audio_batch, batch_size=256)
-    
+
     # Shape: (N, 16, 96) for 2-second clips
     return embeddings
 ```
@@ -943,11 +944,11 @@ from mmap_ninja.ragged import RaggedMmap
 
 # 1. Load audio from workbench manifest
 # 2. Generate microfrontend features
-spec = generate_features_for_clip(audio, sample_rate=16000, 
+spec = generate_features_for_clip(audio, sample_rate=16000,
                                    window_size_ms=30, window_step_ms=10,
                                    num_channels=40)
 # 3. Save as RaggedMmap
-RaggedMmap.from_generator(out_dir="training/wakeword_mmap", 
+RaggedMmap.from_generator(out_dir="training/wakeword_mmap",
                           sample_generator=iter(spectrograms))
 ```
 

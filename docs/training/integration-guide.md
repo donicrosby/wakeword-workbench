@@ -11,6 +11,7 @@ Before running integration steps, bootstrap from repo root:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
+uv run pre-commit install
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -53,37 +54,37 @@ If validation fails due to backend availability, install `uv sync --extra kokoro
 ```mermaid
 flowchart TD
     A[Start: Need wake word model] --> B{Deployment target?}
-    
+
     B -->|ESP32/Microcontroller| C[microWakeWord]
     B -->|Python/Edge device| D{Primary concern?}
-    
+
     D -->|Model size & speed| E[microWakeWord]
     D -->|False positive rate| F[openWakeWord]
-    
+
     C --> G{Training data available?}
     E --> G
-    
+
     G -->|< 1000 samples| H[microWakeWord<br/>better with limited data]
     G -->|> 5000 samples| I{Need FP/hr optimization?}
-    
+
     I -->|Yes| J[openWakeWord<br/>auto-train optimizes FP/hr]
     I -->|No| K[Either harness works]
-    
+
     F --> J
-    
+
     H --> L{Need ESPHome integration?}
     L -->|Yes| M[microWakeWord<br/>native ESPHome support]
     L -->|No| N[Consider openWakeWord<br/>for better FP control]
-    
+
     J --> O[Use WakeWord Workbench<br/>for data generation]
     K --> O
     M --> O
     N --> O
-    
+
     O --> P{Which harness?}
     P -->|microWakeWord| Q[Export WAV files<br/>Use native augmentation<br/>Generate RaggedMmap]
     P -->|openWakeWord| R[Export WAV files<br/>Apply workbench augmentation<br/>Extract embeddings]
-    
+
     Q --> S[Train with harness-native tools]
     R --> S
     S --> T[Evaluate with workbench metrics]
@@ -260,7 +261,7 @@ output_dir = Path("./microwakeword_data")
 for split in ["train", "val", "test"]:
     for class_name in ["wakeword", "negative"]:
         clips = load_clips_from_manifest(audio_dir / f"{split}.jsonl")
-        
+
         spectrograms = []
         for audio in clips:
             spec = generate_features_for_clip(
@@ -271,7 +272,7 @@ for split in ["train", "val", "test"]:
                 num_channels=40,
             )
             spectrograms.append(spec)
-        
+
         # Write RaggedMmap
         RaggedMmap.from_generator(
             out_dir=str(output_dir / split / f"{class_name}_mmap"),
@@ -371,15 +372,15 @@ for split in ["train", "val"]:
             label_filter=label,
             target_samples=32000,  # 2 seconds
         )
-        
+
         # Stack and convert to int16
         audio_batch = np.stack([
             (clip * 32767).astype(np.int16) for clip in clips
         ])
-        
+
         # Extract embeddings
         embeddings = features.embed_clips(audio_batch, batch_size=256, ncpu=8)
-        
+
         # Save
         np.save(
             output_dir / f"{class_name}_features_{split}.npy",

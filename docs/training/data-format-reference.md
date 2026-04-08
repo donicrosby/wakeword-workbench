@@ -11,6 +11,7 @@ Before following conversion steps, initialize and verify the repo:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
+uv run pre-commit install
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -239,7 +240,7 @@ def generate_microwakeword_features(
     slide_frames: int = 10,
 ) -> None:
     """Generate microWakeWord-compatible RaggedMmap features.
-    
+
     Args:
         audio_clips: List of audio arrays (float32 or int16, 16 kHz)
         output_dir: Output directory for RaggedMmap
@@ -249,10 +250,10 @@ def generate_microwakeword_features(
     """
     from microwakeword.audio.spectrograms import SpectrogramGeneration
     from microwakeword.audio.audio_utils import generate_features_for_clip
-    
+
     output_path = output_dir / split / "wakeword_mmap"
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Generate spectrograms for each clip
     spectrograms = []
     for audio in audio_clips:
@@ -269,7 +270,7 @@ def generate_microwakeword_features(
             num_channels=40,
         )
         spectrograms.append(spec)  # Shape: (time_frames, 40)
-    
+
     # Write as RaggedMmap
     RaggedMmap.from_generator(
         out_dir=str(output_path),
@@ -289,7 +290,7 @@ def create_microwakeword_config(
     output_path: Path,
 ) -> None:
     """Create microWakeWord training configuration."""
-    
+
     config = {
         "train_dir": str(features_dir),
         "features": [
@@ -313,7 +314,7 @@ def create_microwakeword_config(
         "target_minimization": 0.05,
         "maximization_metric": "accuracy",
     }
-    
+
     with open(output_path, "w") as f:
         yaml.dump(config, f)
 ```
@@ -335,27 +336,27 @@ def convert_to_openwakeword_embeddings(
     batch_size: int = 256,
 ) -> Path:
     """Convert audio clips to openWakeWord embedding format.
-    
+
     Args:
         audio_clips: List of audio arrays (int16, 16 kHz)
         output_dir: Output directory
         class_name: Class name for file naming
         split: Dataset split
         batch_size: Batch size for embedding extraction
-    
+
     Returns:
         Path to saved embedding file
     """
     # Initialize feature extractor
     features = AudioFeatures(device="cpu")
-    
+
     # Stack audio clips
     # Ensure clips are int16 PCM
     audio_batch = np.stack([
         clip.astype(np.int16) if clip.dtype != np.int16 else clip
         for clip in audio_clips
     ])
-    
+
     # Extract embeddings
     # Output shape: (N, embedding_frames, 96)
     embeddings = features.embed_clips(
@@ -363,11 +364,11 @@ def convert_to_openwakeword_embeddings(
         batch_size=batch_size,
         ncpu=8,
     )
-    
+
     # Save as float32
     output_path = output_dir / f"{class_name}_features_{split}.npy"
     np.save(output_path, embeddings.astype(np.float32))
-    
+
     return output_path
 ```
 
@@ -384,15 +385,15 @@ def create_openwakeword_config(
     validation_corpus: str | None = None,
 ) -> None:
     """Create openWakeWord training configuration."""
-    
+
     feature_files = {
         "positive": str(features_dir / positive_train),
         "adversarial_negative": str(features_dir / negative_train),
     }
-    
+
     if validation_corpus:
         feature_files["validation_corpus"] = str(features_dir / validation_corpus)
-    
+
     config = {
         "model_name": "custom_wakeword",
         "target_phrase": ["hey vera"],
@@ -410,7 +411,7 @@ def create_openwakeword_config(
         "max_negative_weight": 1500,
         "target_false_positives_per_hour": 0.2,
     }
-    
+
     with open(output_path, "w") as f:
         yaml.dump(config, f)
 ```
@@ -428,37 +429,37 @@ def split_by_class(
     split: str = "train",
 ) -> dict[str, Path]:
     """Split workbench export into class-specific files.
-    
+
     Args:
         X_path: Path to features array
         y_path: Path to labels array
         output_dir: Output directory
         split: Split name for file naming
-    
+
     Returns:
         Dict mapping class name to output path
     """
     X = np.load(X_path)
     y = np.load(y_path)
-    
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Split by class
     positive_mask = y == 1
     negative_mask = y == 0
-    
+
     paths = {}
-    
+
     if positive_mask.any():
         pos_path = output_dir / f"positive_features_{split}.npy"
         np.save(pos_path, X[positive_mask])
         paths["positive"] = pos_path
-    
+
     if negative_mask.any():
         neg_path = output_dir / f"adversarial_negative_features_{split}.npy"
         np.save(neg_path, X[negative_mask])
         paths["adversarial_negative"] = neg_path
-    
+
     return paths
 ```
 
@@ -644,28 +645,28 @@ def convert_workbench_to_microwakeword(
     split: str = "train",
 ) -> None:
     """Complete conversion from workbench manifest to microWakeWord format."""
-    
+
     # Load manifest
     manifest = Manifest.load(manifest_path)
-    
+
     # Separate by class
     positive_clips = []
     negative_clips = []
-    
+
     for entry in manifest:
         audio, _ = load_audio(audio_dir / entry.path, target_sr=16000)
         audio = audio.astype(np.float32)
-        
+
         if entry.label == 1:
             positive_clips.append(audio)
         else:
             negative_clips.append(audio)
-    
+
     # Generate features for each class
     for clips, class_name in [(positive_clips, "wakeword"), (negative_clips, "negative")]:
         if not clips:
             continue
-        
+
         spectrograms = []
         for audio in clips:
             spec = generate_features_for_clip(
@@ -676,11 +677,11 @@ def convert_workbench_to_microwakeword(
                 num_channels=40,
             )
             spectrograms.append(spec)
-        
+
         # Write RaggedMmap
         class_dir = output_dir / split / f"{class_name}_mmap"
         class_dir.mkdir(parents=True, exist_ok=True)
-        
+
         RaggedMmap.from_generator(
             out_dir=str(class_dir),
             sample_generator=iter(spectrograms),
@@ -706,43 +707,43 @@ def convert_workbench_to_openwakeword(
     target_samples: int = 32000,  # 2 seconds
 ) -> None:
     """Complete conversion from workbench manifest to openWakeWord format."""
-    
+
     # Load manifest
     manifest = Manifest.load(manifest_path)
-    
+
     # Separate by class
     positive_clips = []
     negative_clips = []
-    
+
     for entry in manifest:
         audio, _ = load_audio(audio_dir / entry.path, target_sr=16000)
-        
+
         # Pad/crop to target length
         if len(audio) < target_samples:
             audio = np.pad(audio, (0, target_samples - len(audio)))
         else:
             audio = audio[:target_samples]
-        
+
         # Convert to int16
         audio = (audio * 32767).astype(np.int16)
-        
+
         if entry.label == 1:
             positive_clips.append(audio)
         else:
             negative_clips.append(audio)
-    
+
     # Initialize feature extractor
     features = AudioFeatures(device="cpu")
-    
+
     # Extract embeddings for each class
     for clips, class_name in [(positive_clips, "positive"), (negative_clips, "adversarial_negative")]:
         if not clips:
             continue
-        
+
         # Stack and extract
         audio_batch = np.stack(clips)
         embeddings = features.embed_clips(audio_batch, batch_size=256, ncpu=8)
-        
+
         # Save
         output_path = output_dir / f"{class_name}_features_{split}.npy"
         np.save(output_path, embeddings.astype(np.float32))

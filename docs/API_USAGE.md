@@ -2,6 +2,19 @@
 
 This document provides comprehensive API documentation for the WakeWord Workbench Python library, covering all major modules with working code examples.
 
+## Setup checkpoint
+
+Before running API examples, initialize the repo and verify CLI/config wiring:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If validation reports a missing TTS backend, install `uv sync --extra kokoro` or `uv sync --extra piper`.
+
 ## Table of Contents
 
 1. [Configuration Module](#1-configuration-module)
@@ -43,7 +56,7 @@ try:
     config = load_config("config.yaml")
     print(f"Wake word: {config.wake_word}")
     print(f"Positives: {config.samples.positives}")
-    print(f"TTS backend: {config.tts.backend}")
+    print(f"TTS providers: {len(config.tts.providers)}")
 except ConfigError as e:
     print(f"Configuration error: {e}")
 ```
@@ -66,9 +79,10 @@ samples.negatives_multiplier  # int (must be > 0)
 
 # TTS configuration
 tts = config.tts
-tts.backend  # str (e.g., "kokoro", "piper")
-tts.voices  # list[str] (must not be empty)
-tts.speed  # float (0 < speed <= 3.0, default 1.0)
+tts.providers  # list[TTSProviderConfig] (must not be empty)
+tts.providers[0].backend  # str (e.g., "kokoro", "piper")
+tts.providers[0].voices  # list[str] (must not be empty)
+tts.providers[0].speed  # float (0 < speed <= 3.0, default 1.0)
 
 # Augmentation configuration
 aug = config.augmentation
@@ -110,11 +124,12 @@ samples:
   negatives_multiplier: 5
 
 tts:
-  backend: "kokoro"
-  voices:
-    - "af_sarah"
-    - "am_adam"
-  speed: 1.0
+  providers:
+    - backend: "kokoro"
+      voices:
+        - "af_sarah"
+        - "am_adam"
+      speed: 1.0
 
 augmentation:
   noise_snr: [-10, 10]
@@ -746,21 +761,22 @@ def main():
         print("No TTS backends available. Install kokoro or piper extras.")
         return
 
-    # 3. Initialize TTS with caching
-    tts = get_backend(config.tts.backend)
+    # 3. Initialize first provider with caching
+    provider = config.tts.providers[0]
+    tts = get_backend(provider.backend)
     cache = TTSCache(max_size_mb=500)
 
     # 4. Generate positive samples
     manifest = Manifest()
     
-    for voice in config.tts.voices[:2]:  # Use first 2 voices
+    for voice in provider.voices[:2]:  # Use first 2 voices
         tts.set_voice(voice)
         
         # Check cache first
-        result = cache.get(config.wake_word, voice, config.tts.backend)
+        result = cache.get(config.wake_word, voice, provider.backend, speed=provider.speed)
         if result is None:
             result = tts.synthesize(config.wake_word)
-            cache.put(config.wake_word, voice, config.tts.backend, result)
+            cache.put(config.wake_word, voice, provider.backend, result, speed=provider.speed)
         
         # Create manifest entry
         entry = ManifestEntry(

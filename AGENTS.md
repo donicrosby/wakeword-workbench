@@ -8,6 +8,25 @@
 ## OVERVIEW
 Python 3.11+ toolkit for training and evaluating micro wake word detection models. Emphasizes data quality over model architecture.
 
+## AGENT BOOTSTRAP (DO THIS FIRST)
+
+Use this exact startup sequence before making changes so you do not get stuck on environment or command issues.
+
+```bash
+# 1) Install dependencies for development work
+uv sync --group dev
+
+# 2) Optional: install TTS backends used by config/examples
+uv sync --extra kokoro
+uv sync --extra piper
+
+# 3) Smoke-check CLI and config pathing
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If validation fails because a backend is missing, install the required backend extra and rerun validation.
+
 ## STRUCTURE
 
 ```
@@ -44,7 +63,7 @@ Python 3.11+ toolkit for training and evaluating micro wake word detection model
 ```bash
 # Development
 uv sync                    # Install dependencies
-uv sync --extra dev        # With dev dependencies
+uv sync --group dev        # With dev dependencies
 uv sync --extra kokoro     # With Kokoro TTS
 uv sync --extra piper      # With Piper TTS
 
@@ -113,7 +132,20 @@ Transforms in `augment/` are auto-registered on import via `_auto_register()` in
 ## NOTES
 
 - **No CI/CD** — No `.github/workflows/` directory yet
-- **Early stage** — Pipeline is stubbed (`# Placeholder for actual pipeline logic (Task 7+)`)
+- **Early stage** — Dataset pipeline exists and is evolving rapidly; verify behavior with `validate` + `run` on sample configs
 - **Key principle** — "Data quality and negative coverage matter more than model architecture" (from spec)
 - **Cache location** — `~/.cache/wakeword_workbench/tts/` for TTS synthesis
 - **Exit codes** — 0=success, 1=error, 2=config error
+
+## DOCUMENTATION SYNC TASK (ANTI-DRIFT)
+
+When any setup command, CLI flag/command, config schema, or workflow step changes, update all user-facing docs in the same change:
+
+- `README.md`
+- `AGENTS.md`
+- `src/wakeword_workbench/AGENTS.md`
+- `docs/*.md`
+- `docs/training/*.md`
+- `examples/training/README.md`
+
+This sync task is mandatory to keep agent instructions current and prevent onboarding drift.

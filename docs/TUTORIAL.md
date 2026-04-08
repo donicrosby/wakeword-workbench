@@ -2,6 +2,19 @@
 
 A complete end-to-end walkthrough for training micro wake word detection models. This tutorial uses a concrete example throughout: training a model for the wake word "Hey Helper".
 
+## Setup checkpoint
+
+Before starting the tutorial, bootstrap and smoke-test the repo:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If your chosen config uses a missing TTS backend, install `uv sync --extra kokoro` or `uv sync --extra piper` first.
+
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
@@ -108,14 +121,15 @@ samples:
   negatives_multiplier: 5
 
 tts:
-  backend: kokoro
-  voices:
-    - af_bella
-    - af_nicole
-    - af_sarah
-    - am_adam
-    - am_michael
-  speed: 1.0
+  providers:
+    - backend: kokoro
+      voices:
+        - af_bella
+        - af_nicole
+        - af_sarah
+        - am_adam
+        - am_michael
+      speed: 1.0
 
 augmentation:
   noise_snr: [-5, 15]
@@ -135,9 +149,9 @@ EOF
 | `wake_word` | The phrase to train for: "Hey Helper" |
 | `samples.positives` | Generate 1000 positive samples |
 | `samples.negatives_multiplier` | Generate 5000 negatives (1000 × 5) |
-| `tts.backend` | Use Kokoro TTS engine |
-| `tts.voices` | 5 different voices for diversity |
-| `tts.speed` | Normal speech rate |
+| `tts.providers[].backend` | Use Kokoro TTS engine |
+| `tts.providers[].voices` | 5 different voices for diversity |
+| `tts.providers[].speed` | Normal speech rate |
 | `augmentation.noise_snr` | Add noise from -5dB to 15dB SNR |
 | `augmentation.reverb_probability` | 30% of samples get reverb |
 | `augmentation.gain_range` | Volume from -45dB to 0dB |
@@ -174,7 +188,8 @@ uv run wakeword-workbench validate config.yaml
 
 Wake word: Hey Helper
 Samples: 1000 positives
-TTS backend: kokoro
+TTS providers:
+  - kokoro (5 voices) speed=1.0
 ✓ Config validation passed
 ```
 
@@ -236,17 +251,17 @@ uv run wakeword-workbench run config.yaml
 │ pipeline                                    │
 ╰─────────────────────────────────────────────╯
 
-⠋ Initializing pipeline...
-✓ Pipeline ready (stub)
+⠋ Initializing generator...
+Dataset generation complete
 
 ✓ Pipeline completed successfully
 ```
 
-**Note:** The pipeline is currently stubbed. The working feature is hard negative mining (next section).
+**Note:** `run` executes dataset generation from your validated config. Use smaller sample counts first to verify your setup quickly.
 
 ### What the Pipeline Does
 
-When fully implemented, the pipeline will:
+The pipeline currently:
 
 1. **Generate positives** — Synthesize "Hey Helper" with TTS
 2. **Generate negatives** — Create confusion phrases and synthetic samples
@@ -261,7 +276,7 @@ When fully implemented, the pipeline will:
 | TTS synthesis | ✅ Working |
 | Augmentation | ✅ Working |
 | Hard negative mining | ✅ Working |
-| Full pipeline | 🚧 Stub (placeholder) |
+| Dataset generation pipeline | ✅ Working |
 
 ---
 
@@ -751,8 +766,9 @@ Error: ConfigError: Missing required field: wake_word
 - `wake_word`
 - `samples.positives`
 - `samples.negatives_multiplier`
-- `tts.backend`
-- `tts.voices`
+- `tts.providers`
+- `tts.providers[].backend`
+- `tts.providers[].voices`
 - `augmentation.noise_snr`
 - `augmentation.reverb_probability`
 - `augmentation.gain_range`

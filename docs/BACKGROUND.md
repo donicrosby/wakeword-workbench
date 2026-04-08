@@ -2,6 +2,19 @@
 
 This document explains the fundamentals of wake word detection for those new to machine learning. We focus on intuition and practical concepts rather than mathematical details.
 
+## Setup checkpoint
+
+Before following this guide, run the repo bootstrap once:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If validation fails due to missing TTS backend, install `uv sync --extra kokoro` or `uv sync --extra piper`.
+
 ---
 
 ## 1. What is a Wake Word?

@@ -6,6 +6,19 @@
 ## OVERVIEW
 Core wake word workbench package with 8 submodules covering TTS, augmentation, dataset generation, evaluation, export, and mining.
 
+## MODULE BOOTSTRAP (DO THIS FIRST)
+
+Before touching this module, bootstrap and smoke-check from repo root:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If the selected config backend is unavailable, install the matching extra (`kokoro` or `piper`) and re-run validation.
+
 ## STRUCTURE
 
 ```

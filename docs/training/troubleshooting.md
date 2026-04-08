@@ -4,6 +4,19 @@
 
 This guide covers common problems when integrating WakeWord Workbench with microWakeWord and openWakeWord training harnesses, with debugging steps and solutions.
 
+## Setup checkpoint
+
+Before troubleshooting deeper issues, verify the baseline environment:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If backend initialization fails, install `uv sync --extra kokoro` or `uv sync --extra piper` and retry.
+
 ---
 
 ## Table of Contents
@@ -69,10 +82,11 @@ samples:
   negatives_multiplier: 5  # Required
 
 tts:
-  backend: "kokoro"     # Required
-  voices:               # Required
-    - "af_sarah"
-  speed: 1.0            # Optional, defaults to 1.0
+  providers:            # Required
+    - backend: "kokoro"
+      voices:
+        - "af_sarah"
+      speed: 1.0        # Optional, defaults to 1.0
 
 augmentation:
   noise_snr: [-10, 10]  # Required
@@ -152,8 +166,9 @@ RuntimeError: Failed to generate positive samples
 from wakeword_workbench.tts.registry import get_backend
 
 backend = get_backend("kokoro")
-result = backend.synthesize("test", "af_sarah", 1.0)
-print(f"Success: {result.audio_path}")
+backend.set_voice("af_sarah")
+result = backend.synthesize("test")
+print(f"Success: duration={result.duration:.2f}s, sample_rate={result.sample_rate}")
 ```
 
 2. Verify audio files:

@@ -2,6 +2,19 @@
 
 This directory contains ready-to-use training configurations for both microWakeWord and openWakeWord training harnesses.
 
+## Setup checkpoint
+
+Before using these templates, run this from the repository root:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If your selected configuration uses a missing backend, install `uv sync --extra kokoro` or `uv sync --extra piper`.
+
 ## Quick Start
 
 Choose the configuration that matches your goal:
@@ -78,8 +91,10 @@ samples:
   positives: 1000
   negatives_multiplier: 10
 tts:
-  backend: "kokoro"
-  voices: ["af_sarah", "am_adam"]
+  providers:
+    - backend: "kokoro"
+      voices: ["af_sarah", "am_adam"]
+      speed: 1.0
 augmentation:
   noise_snr: [-15, 5]
   reverb_probability: 0.5
@@ -90,7 +105,7 @@ output:
 EOF
 
 # Generate dataset
-wakeword-workbench run config.yaml
+uv run wakeword-workbench run config.yaml
 ```
 
 ### 2. Convert to Harness Format

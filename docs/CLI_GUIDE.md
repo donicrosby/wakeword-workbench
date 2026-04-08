@@ -2,6 +2,19 @@
 
 Complete reference for all command-line interface commands, arguments, options, and exit codes.
 
+## Setup checkpoint
+
+Before using CLI workflows in this guide, run:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If backend resolution fails, install `uv sync --extra kokoro` or `uv sync --extra piper`.
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -180,12 +193,13 @@ uv run wakeword-workbench run config.yaml
 On success, displays:
 - Wake word phrase
 - Number of positive samples
-- TTS backend name
+- TTS providers list
 
 ```text
 Wake word: hey vera
 Samples: 100 positives
-TTS backend: kokoro
+TTS providers:
+  - kokoro (1 voice) speed=1.0
 ✓ Config validation passed
 ```
 
@@ -530,9 +544,10 @@ samples:
   positives: 100
   negatives_multiplier: 5
 tts:
-  backend: "kokoro"
-  voices: ["af_sarah"]
-  speed: 1.0
+  providers:
+    - backend: "kokoro"
+      voices: ["af_sarah"]
+      speed: 1.0
 augmentation:
   noise_snr: [-10, 10]
   reverb_probability: 0.5

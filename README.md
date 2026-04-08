@@ -2,6 +2,26 @@
 
 A Python toolkit for training and evaluating micro wake word detection models. Emphasizes data quality and negative coverage over model architecture.
 
+## Agent Setup (Do This First)
+
+Run this sequence before using any workflow in this repo:
+
+```bash
+uv sync --group dev
+source .venv/bin/activate
+uv run wakeword-workbench --help
+uv run wakeword-workbench validate examples/basic_config.yaml
+```
+
+If your config uses Kokoro or Piper and validation fails, install the missing backend:
+
+```bash
+uv sync --extra kokoro
+uv sync --extra piper
+```
+
+Agent-specific conventions and anti-drift rules live in [AGENTS.md](AGENTS.md).
+
 ## Quick Links
 
 | Resource | Description |
@@ -110,11 +130,12 @@ samples:
   negatives_multiplier: 5  # Generate 500 negative samples
 
 tts:
-  backend: "kokoro"
-  voices:
-    - "af_sarah"
-    - "am_adam"
-  speed: 1.0
+  providers:
+    - backend: "kokoro"
+      voices:
+        - "af_sarah"
+        - "am_adam"
+      speed: 1.0
 
 augmentation:
   noise_snr: [-10, 10]      # dB range for noise injection
@@ -209,8 +230,9 @@ wakeword-workbench/
 | `wake_word` | string | The wake word phrase to train for |
 | `samples.positives` | int | Number of positive samples to generate |
 | `samples.negatives_multiplier` | int | Multiplier for negative samples |
-| `tts.backend` | string | TTS engine: `"kokoro"` or `"piper"` |
-| `tts.voices` | list | List of voice identifiers |
+| `tts.providers` | list | Non-empty list of TTS provider configs |
+| `tts.providers[].backend` | string | TTS engine: `"kokoro"` or `"piper"` |
+| `tts.providers[].voices` | list | Non-empty list of voice identifiers |
 | `augmentation.noise_snr` | [float, float] | SNR range for noise injection (dB) |
 | `augmentation.reverb_probability` | float | Probability of reverb (0.0-1.0) |
 | `augmentation.gain_range` | [float, float] | Gain range (dB) |
@@ -221,7 +243,7 @@ wakeword-workbench/
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `tts.speed` | float | 1.0 | Speech speed multiplier (0.0-3.0) |
+| `tts.providers[].speed` | float | 1.0 | Speech speed multiplier (0.0-3.0) |
 
 See `examples/` directory for sample configurations.
 
@@ -237,18 +259,16 @@ from wakeword_workbench.tts.registry import get_backend
 # Load configuration
 config = load_config("config.yaml")
 
-# Get TTS backend
-tts = get_backend(config.tts.backend)
+# Get first configured provider
+provider = config.tts.providers[0]
+tts = get_backend(provider.backend)
+tts.set_voice(provider.voices[0])
 
 # Generate samples
-result = tts.synthesize(
-    text=config.wake_word,
-    voice=config.tts.voices[0],
-    speed=config.tts.speed
-)
+result = tts.synthesize(config.wake_word)
 
-print(f"Generated: {result.audio_path}")
-print(f"Duration: {result.duration_ms}ms")
+print(f"Samples: {len(result.audio)}")
+print(f"Duration: {result.duration:.2f}s")
 ```
 
 ## Key Concepts

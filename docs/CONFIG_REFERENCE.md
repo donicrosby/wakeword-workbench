@@ -9,6 +9,7 @@ Before validating or editing configs, bootstrap and smoke-test the repo:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
+uv run pre-commit install
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -64,7 +65,7 @@ output:
 
 ### `wake_word`
 
-**Type:** `string`  
+**Type:** `string`
 **Required:** Yes
 
 The wake word phrase to train the model for.
@@ -93,7 +94,7 @@ wake_word: "okay google"
 
 ### `samples`
 
-**Type:** `SamplesConfig` (nested object)  
+**Type:** `SamplesConfig` (nested object)
 **Required:** Yes
 
 Controls the number of positive and negative samples to generate.
@@ -141,7 +142,7 @@ samples:
 
 ### `tts`
 
-**Type:** `TTSConfig` (nested object)  
+**Type:** `TTSConfig` (nested object)
 **Required:** Yes
 
 Configures one or more text-to-speech providers for generating samples.
@@ -207,7 +208,7 @@ tts:
 
 ### `augmentation`
 
-**Type:** `AugmentationConfig` (nested object)  
+**Type:** `AugmentationConfig` (nested object)
 **Required:** Yes
 
 Configures audio augmentation parameters for increasing dataset diversity.
@@ -271,7 +272,7 @@ augmentation:
 
 ### `output`
 
-**Type:** `OutputConfig` (nested object)  
+**Type:** `OutputConfig` (nested object)
 **Required:** Yes
 
 Configures output directory and export formats.

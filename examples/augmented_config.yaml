@@ -8,13 +8,18 @@ samples:
   negatives_multiplier: 10  # Generate 5000 negative samples
 
 tts:
-  backend: "kokoro"
-  voices:
-    - "af_sarah"
-    - "af_nicole"
-    - "am_adam"
-    - "am_michael"
-  speed: 0.9  # Slightly slower for clarity
+  providers:
+    - backend: "kokoro"
+      voices:
+        - "af_sarah"
+        - "af_nicole"
+        - "am_adam"
+        - "am_michael"
+      speed: 0.9  # Slightly slower for clarity
+    - backend: "piper"
+      voices:
+        - "en_US-amy-low"
+      speed: 1.0
 
 augmentation:
   # Add background noise at various SNR levels

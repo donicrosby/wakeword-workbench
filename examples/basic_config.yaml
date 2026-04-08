@@ -8,11 +8,12 @@ samples:
   negatives_multiplier: 5  # Generate 500 negative samples
 
 tts:
-  backend: "kokoro"
-  voices:
-    - "af_sarah"
-    - "am_adam"
-  speed: 1.0
+  providers:
+    - backend: "kokoro"
+      voices:
+        - "af_sarah"
+        - "am_adam"
+      speed: 1.0
 
 augmentation:
   noise_snr: [-10, 10]

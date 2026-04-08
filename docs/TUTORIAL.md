@@ -9,6 +9,7 @@ Before starting the tutorial, bootstrap and smoke-test the repo:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
+uv run pre-commit install
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```

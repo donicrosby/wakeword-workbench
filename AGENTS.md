@@ -1,8 +1,8 @@
 # PROJECT KNOWLEDGE BASE — WakeWord Workbench
 
-**Generated:** 2026-03-30  
-**Commit:** be48811  
-**Branch:** opencode/playful-cactus  
+**Generated:** 2026-03-30
+**Commit:** be48811
+**Branch:** opencode/playful-cactus
 **Version:** 0.1.0-alpha
 
 ## OVERVIEW
@@ -16,11 +16,14 @@ Use this exact startup sequence before making changes so you do not get stuck on
 # 1) Install dependencies for development work
 uv sync --group dev
 
-# 2) Optional: install TTS backends used by config/examples
+# 2) Install the local git hooks for repo checks
+uv run pre-commit install
+
+# 3) Optional: install TTS backends used by config/examples
 uv sync --extra kokoro
 uv sync --extra piper
 
-# 3) Smoke-check CLI and config pathing
+# 4) Smoke-check CLI and config pathing
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -64,6 +67,8 @@ If validation fails because a backend is missing, install the required backend e
 # Development
 uv sync                    # Install dependencies
 uv sync --group dev        # With dev dependencies
+uv run pre-commit install  # Install repo git hooks
+uv run pre-commit run --all-files  # Run hooks manually
 uv sync --extra kokoro     # With Kokoro TTS
 uv sync --extra piper      # With Piper TTS
 

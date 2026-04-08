@@ -9,6 +9,7 @@ Before using CLI workflows in this guide, run:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
+uv run pre-commit install
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -593,17 +594,17 @@ uv run wakeword-workbench run config.yaml
 # Loop: train -> mine -> merge -> retrain
 for i in {1..3}; do
   echo "=== Iteration $i ==="
-  
+
   # Train model
   uv run wakeword-workbench run config.yaml
-  
+
   # Mine hard negatives
   uv run wakeword-workbench mine \
     -m output/model.onnx \
     -a "test_audio/*.wav" \
     -o "./mined_$i" \
     -t 0.7
-  
+
   # Merge into training set
   uv run wakeword-workbench merge \
     -s "./mined_$i/manifest.jsonl" \

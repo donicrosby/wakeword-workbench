@@ -24,10 +24,10 @@ tts:
 augmentation:
   # Add background noise at various SNR levels
   noise_snr: [-15, -5]
-  
+
   # Reverb for room simulation
   reverb_probability: 0.7
-  
+
   # Gain variations
   gain_range: [-50, -5]
 

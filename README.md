@@ -9,6 +9,7 @@ Run this sequence before using any workflow in this repo:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
+uv run pre-commit install
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -101,6 +102,12 @@ uv sync --all-extras
 ```bash
 # Install with dev dependencies
 uv sync --group dev
+
+# Install git hooks
+uv run pre-commit install
+
+# Run hooks across the repo
+uv run pre-commit run --all-files
 
 # Run tests
 uv run pytest

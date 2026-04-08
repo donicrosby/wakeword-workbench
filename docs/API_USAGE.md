@@ -9,6 +9,7 @@ Before running API examples, initialize the repo and verify CLI/config wiring:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
+uv run pre-commit install
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -185,22 +186,22 @@ from wakeword_workbench.tts.base import TTSError
 
 try:
     tts = get_backend("kokoro")
-    
+
     # List available voices
     voices = tts.list_voices()
     print(f"Available voices: {voices}")
-    
+
     # Set a voice
     tts.set_voice(voices[0])
-    
+
     # Synthesize text
     result = tts.synthesize("hello world")
-    
+
     # Access results
     print(f"Sample rate: {result.sample_rate} Hz")
     print(f"Duration: {result.duration:.2f} seconds")
     print(f"Audio shape: {result.audio.shape}")
-    
+
 except TTSError as e:
     print(f"TTS synthesis failed: {e}")
 ```
@@ -756,7 +757,7 @@ def main():
     # 2. Check TTS backends
     available = list_available_backends()
     print(f"Available TTS backends: {available}")
-    
+
     if not available:
         print("No TTS backends available. Install kokoro or piper extras.")
         return
@@ -768,16 +769,16 @@ def main():
 
     # 4. Generate positive samples
     manifest = Manifest()
-    
+
     for voice in provider.voices[:2]:  # Use first 2 voices
         tts.set_voice(voice)
-        
+
         # Check cache first
         result = cache.get(config.wake_word, voice, provider.backend, speed=provider.speed)
         if result is None:
             result = tts.synthesize(config.wake_word)
             cache.put(config.wake_word, voice, provider.backend, result, speed=provider.speed)
-        
+
         # Create manifest entry
         entry = ManifestEntry(
             path=f"audio/{voice}_positive.wav",
@@ -791,7 +792,7 @@ def main():
 
     # 5. Apply augmentation
     pipeline = default_pipeline()
-    
+
     # Simulate audio processing
     audio = np.random.randn(16000).astype(np.float32)
     augmented = pipeline.apply(audio, 16000)
@@ -800,7 +801,7 @@ def main():
     # 6. Save manifest
     output_dir = Path(config.output.path)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     manifest.save(output_dir / "train.jsonl")
     print(f"Saved manifest with {len(manifest)} entries")
 
@@ -811,7 +812,7 @@ def main():
         "audio_duration_hours": 1.0,
         "metadata": {"wake_word": config.wake_word},
     }
-    
+
     report = generate_report(results, format="markdown")
     print("\nEvaluation Report:")
     print(report)

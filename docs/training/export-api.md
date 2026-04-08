@@ -9,6 +9,7 @@ Before running export examples, bootstrap and verify the repo environment:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
+uv run pre-commit install
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -697,12 +698,12 @@ try:
     data = validate_export(Path("output/"), split="train")
     X = data["X"]
     y = data["y"]
-    
+
     print(f"Loaded {len(X)} samples")
     print(f"X shape: {X.shape}")
     print(f"Positive samples: {sum(y == 1)}")
     print(f"Negative samples: {sum(y == 0)}")
-    
+
 except OpenWakeWordExportError as e:
     print(f"Validation failed: {e}")
 ```
@@ -1020,7 +1021,7 @@ for split_name, manifest in [
         split=split_name,
         audio_dir=audio_dir
     )
-    
+
     # OpenWakeWord format
     export_to_numpy(
         manifest,
@@ -1092,14 +1093,14 @@ output_dir = Path("output")
 try:
     result = export_to_mmap(manifest, output_dir, split="train")
     print(f"✓ Export successful: {result}")
-    
+
 except MicroWakeWordExportError as e:
     print(f"✗ Export failed: {e}")
     # Handle specific errors:
     # - "Audio file not found: ..." — Missing audio file
     # - "Failed to load audio: ..." — Corrupted audio file
     # - "Failed to write data file: ..." — I/O error
-    
+
 except Exception as e:
     print(f"✗ Unexpected error: {e}")
     raise
@@ -1181,18 +1182,18 @@ def export_and_validate(manifest, output_dir, format="microwakeword"):
     else:
         export_to_numpy(manifest, output_dir, split="train")
         report = validate_openwakeword(output_dir, split="train")
-    
+
     if not report.valid:
         print("Validation errors:")
         for error in report.errors:
             print(f"  - {error}")
         raise ValueError("Export validation failed")
-    
+
     if report.warnings:
         print("Validation warnings:")
         for warning in report.warnings:
             print(f"  - {warning}")
-    
+
     return report
 ```
 
@@ -1211,7 +1212,7 @@ def export_splits(splits: dict[str, Manifest], output_dir: Path):
             output_dir=output_dir,
             split=split_name,
         )
-    
+
     # Resulting files:
     # - train_data.mmap, train_indices.npy, train_labels.npy
     # - val_data.mmap, val_indices.npy, val_labels.npy

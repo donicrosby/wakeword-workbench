@@ -1,0 +1,26 @@
+wake_word: "hey vera"
+
+samples:
+  positives: 250
+  negatives_multiplier: 5
+
+tts:
+  providers:
+    - backend: "kokoro"
+      voices:
+        - "af_sarah"
+        - "am_adam"
+      speed: 0.95
+    - backend: "piper"
+      voices:
+        - "en_US-amy-low"
+      speed: 1.0
+
+augmentation:
+  noise_snr: [-10, 10]
+  reverb_probability: 0.5
+  gain_range: [-45, 0]
+
+output:
+  path: "./output/multi_provider_dataset"
+  format: ["microwakeword", "openwakeword"]

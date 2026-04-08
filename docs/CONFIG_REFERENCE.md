@@ -24,11 +24,16 @@ samples:
   negatives_multiplier: 5
 
 tts:
-  backend: kokoro
-  voices:
-    - af_bella
-    - af_nicole
-  speed: 1.0
+  providers:
+    - backend: kokoro
+      voices:
+        - af_bella
+        - af_nicole
+      speed: 1.0
+    - backend: piper
+      voices:
+        - en_US-lessac-medium
+      speed: 1.0
 
 augmentation:
   noise_snr: [-5, 15]
@@ -126,21 +131,20 @@ samples:
 **Type:** `TTSConfig` (nested object)  
 **Required:** Yes
 
-Configures the text-to-speech backend for generating positive samples.
+Configures one or more text-to-speech providers for generating samples.
 
 #### Fields
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `backend` | `string` | Yes | — | TTS engine to use |
-| `voices` | `list[string]` | Yes | — | List of voice identifiers |
-| `speed` | `float` | No | `1.0` | Speech speed multiplier |
+| `providers` | `list[TTSProviderConfig]` | Yes | — | List of provider configurations |
 
 #### Validation Rules
 
-- `backend` cannot be empty
-- `voices` cannot be empty
-- `speed` must be in range `(0, 3]` (exclusive of 0, inclusive of 3)
+- `providers` cannot be empty
+- Each provider `backend` cannot be empty
+- Each provider `voices` list cannot be empty
+- Each provider `speed` must be in range `(0, 3]` (exclusive of 0, inclusive of 3)
 
 #### Valid Backend Values
 
@@ -154,35 +158,36 @@ Configures the text-to-speech backend for generating positive samples.
 | Condition | Error |
 |-----------|-------|
 | Field missing | `ConfigError: Missing required field: tts` |
-| `backend` empty | `ConfigError: backend cannot be empty` |
-| `voices` empty | `ConfigError: voices cannot be empty` |
-| `speed <= 0` or `speed > 3` | `ConfigError: speed must be between 0 and 3` |
+| `providers` missing | `ConfigError: Missing required field: tts.providers` |
+| `providers` empty | `ConfigError: providers cannot be empty` |
+| Provider `backend` empty | `ConfigError: backend cannot be empty` |
+| Provider `voices` empty | `ConfigError: voices cannot be empty` |
+| Provider `speed <= 0` or `speed > 3` | `ConfigError: speed must be between 0 and 3` |
 
 #### Examples
 
 ```yaml
-# Kokoro with multiple voices
+# Single-provider config
 tts:
-  backend: kokoro
-  voices:
-    - af_bella
-    - af_nicole
-    - am_adam
-  speed: 1.0
+  providers:
+    - backend: kokoro
+      voices:
+        - af_bella
+        - af_nicole
+        - am_adam
+      speed: 1.0
 
-# Piper with single voice, faster speech
+# Multi-provider config
 tts:
-  backend: piper
-  voices:
-    - en_US-lessac-medium
-  speed: 1.5
-
-# Slow speech for clarity
-tts:
-  backend: kokoro
-  voices:
-    - af_sarah
-  speed: 0.8
+  providers:
+    - backend: kokoro
+      voices:
+        - af_sarah
+      speed: 0.8
+    - backend: piper
+      voices:
+        - en_US-lessac-medium
+      speed: 1.5
 ```
 
 ---
@@ -329,14 +334,19 @@ samples:
   negatives_multiplier: 5
 
 tts:
-  backend: kokoro
-  voices:
-    - af_bella
-    - af_nicole
-    - af_sarah
-    - am_adam
-    - am_michael
-  speed: 1.0
+  providers:
+    - backend: kokoro
+      voices:
+        - af_bella
+        - af_nicole
+        - af_sarah
+        - am_adam
+        - am_michael
+      speed: 1.0
+    - backend: piper
+      voices:
+        - en_US-lessac-medium
+      speed: 1.0
 
 augmentation:
   noise_snr: [-5, 15]        # Moderate noise variation
@@ -418,21 +428,23 @@ samples:
 ConfigError: voices cannot be empty
 ```
 
-**Cause:** `tts.voices` is an empty list.
+**Cause:** A provider in `tts.providers` has an empty `voices` list.
 
 **Solution:** Provide at least one voice identifier.
 
 ```yaml
 # Wrong
 tts:
-  backend: kokoro
-  voices: []
+  providers:
+    - backend: kokoro
+      voices: []
 
 # Correct
 tts:
-  backend: kokoro
-  voices:
-    - af_bella
+  providers:
+    - backend: kokoro
+      voices:
+        - af_bella
 ```
 
 ---
@@ -444,28 +456,31 @@ tts:
 ConfigError: speed must be between 0 and 3
 ```
 
-**Cause:** `tts.speed` is outside the valid range `(0, 3]`.
+**Cause:** A provider speed in `tts.providers` is outside the valid range `(0, 3]`.
 
 **Solution:** Use a speed value between 0 (exclusive) and 3 (inclusive).
 
 ```yaml
 # Wrong
 tts:
-  backend: kokoro
-  voices: [af_bella]
-  speed: 0    # Must be > 0
+  providers:
+    - backend: kokoro
+      voices: [af_bella]
+      speed: 0
 
 # Wrong
 tts:
-  backend: kokoro
-  voices: [af_bella]
-  speed: 5    # Must be <= 3
+  providers:
+    - backend: kokoro
+      voices: [af_bella]
+      speed: 5
 
 # Correct
 tts:
-  backend: kokoro
-  voices: [af_bella]
-  speed: 1.0
+  providers:
+    - backend: kokoro
+      voices: [af_bella]
+      speed: 1.0
 ```
 
 ---

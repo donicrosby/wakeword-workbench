@@ -30,11 +30,6 @@ augmentation:
   
   # Gain variations
   gain_range: [-50, -5]
-  
-  # Padding for fixed-length clips
-  padding:
-    target_duration_ms: 1500
-    jitter_ms: 100
 
 output:
   path: "./output/augmented_dataset"

@@ -4,11 +4,9 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
-import yaml
 
 from wakeword_workbench.config import (
     AugmentationConfig,
-    Config,
     ConfigError,
     OutputConfig,
     SamplesConfig,
@@ -16,7 +14,6 @@ from wakeword_workbench.config import (
     TTSProviderConfig,
     load_config,
 )
-
 
 # --- Valid Config Tests ---
 

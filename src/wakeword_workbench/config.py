@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 
-import yaml
+yaml = import_module("yaml")
 
 SUPPORTED_OUTPUT_FORMATS = {"microwakeword", "openwakeword"}
 

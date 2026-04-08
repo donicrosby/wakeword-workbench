@@ -16,7 +16,7 @@ from wakeword_workbench.config import (
     OutputConfig,
     SamplesConfig,
     TTSConfig,
-    load_config,
+    TTSProviderConfig,
 )
 
 
@@ -32,7 +32,11 @@ def tmp_dataset_dir(tmp_path: Path) -> Path:
 def sample_config(tmp_dataset_dir: Path) -> Config:
     """Create a sample Config object for testing."""
     samples = SamplesConfig(positives=1000, negatives_multiplier=5)
-    tts = TTSConfig(backend="kokoro", voices=["af_sarah"], speed=1.0)
+    tts = TTSConfig(
+        providers=[
+            TTSProviderConfig(backend="kokoro", voices=["af_sarah"], speed=1.0),
+        ]
+    )
     augmentation = AugmentationConfig(
         noise_snr=[-10, 10],
         reverb_probability=0.5,
@@ -95,10 +99,11 @@ samples:
   positives: 1000
   negatives_multiplier: 5
 tts:
-  backend: kokoro
-  voices:
-    - af_sarah
-  speed: 1.0
+  providers:
+    - backend: kokoro
+      voices:
+        - af_sarah
+      speed: 1.0
 augmentation:
   noise_snr: [-10, 10]
   reverb_probability: 0.5

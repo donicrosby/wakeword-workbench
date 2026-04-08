@@ -9,6 +9,7 @@ Before using these templates, run this from the repository root:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
+uv run pre-commit install
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -34,7 +35,7 @@ Choose the configuration that matches your goal:
 - **Debugging** configuration or data issues
 - **CI/CD pipelines** that need fast feedback
 
-**Expected runtime:** 5-15 minutes  
+**Expected runtime:** 5-15 minutes
 **Dataset size:** 100-500 positive samples
 
 ### When to Use Production
@@ -43,7 +44,7 @@ Choose the configuration that matches your goal:
 - **Final training** after iterating with quick-test
 - **Comprehensive evaluation** requiring robust model
 
-**Expected runtime:** 30+ minutes (openWakeWord: 1+ hour)  
+**Expected runtime:** 30+ minutes (openWakeWord: 1+ hour)
 **Dataset size:** 10,000+ positive samples, diverse negatives
 
 ### When to Use Fine-tuning
@@ -53,7 +54,7 @@ Choose the configuration that matches your goal:
 - **Iterative improvement** based on observed failures
 - **Quick updates** without full retraining
 
-**Expected runtime:** 15-20 minutes  
+**Expected runtime:** 15-20 minutes
 **Dataset size:** 1,000-5,000 new samples + original data
 
 ## Configuration Parameters

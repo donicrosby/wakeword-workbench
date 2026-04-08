@@ -1,6 +1,6 @@
 # MODULE KNOWLEDGE BASE — wakeword_workbench
 
-**Generated:** 2026-03-30  
+**Generated:** 2026-03-30
 **Parent:** ../AGENTS.md
 
 ## OVERVIEW
@@ -13,6 +13,7 @@ Before touching this module, bootstrap and smoke-check from repo root:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
+uv run pre-commit install
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```

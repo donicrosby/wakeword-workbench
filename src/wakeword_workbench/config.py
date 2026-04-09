@@ -207,7 +207,26 @@ class Config:
     tts: TTSConfig
     augmentation: AugmentationConfig
     output: OutputConfig
+    wake_word_variants: list[str] | None = None
     negatives: NegativeGenerationConfig = field(default_factory=NegativeGenerationConfig)
+
+    def __post_init__(self) -> None:
+        if self.wake_word_variants is not None:
+            if len(self.wake_word_variants) == 0:
+                raise ConfigError("wake_word_variants cannot be empty when provided")
+
+            normalized_variants: list[str] = []
+            seen_variants: set[str] = set()
+            for variant in self.wake_word_variants:
+                cleaned = " ".join(variant.split())
+                if not cleaned:
+                    raise ConfigError("wake_word_variants cannot contain empty values")
+                normalized = cleaned.lower()
+                if normalized in seen_variants:
+                    continue
+                seen_variants.add(normalized)
+                normalized_variants.append(cleaned)
+            self.wake_word_variants = normalized_variants
 
 
 def load_config(path: str | Path) -> Config:
@@ -305,6 +324,7 @@ def load_config(path: str | Path) -> Config:
 
     return Config(
         wake_word=data["wake_word"],
+        wake_word_variants=data.get("wake_word_variants"),
         samples=samples,
         tts=tts,
         augmentation=augmentation,

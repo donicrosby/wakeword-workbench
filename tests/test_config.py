@@ -7,6 +7,7 @@ import pytest
 
 from wakeword_workbench.config import (
     AugmentationConfig,
+    Config,
     ConfigError,
     NegativeConfusionConfig,
     NegativeGenerationConfig,
@@ -42,6 +43,7 @@ output:
 
 FULL_VALID_CONFIG = dedent("""
 wake_word: "hey assistant"
+wake_word_variants: ["Hey Assistant", "hey assistant", " assistant "]
 samples:
   positives: 1000
   negatives_multiplier: 5
@@ -87,6 +89,7 @@ def test_load_config_valid_minimal(tmp_path: Path) -> None:
     config = load_config(config_file)
 
     assert config.wake_word == "hey assistant"
+    assert config.wake_word_variants is None
     assert config.samples.positives == 1000
     assert config.samples.negatives_multiplier == 5
     assert len(config.tts.providers) == 1
@@ -117,6 +120,7 @@ def test_load_config_valid_full(tmp_path: Path) -> None:
     config = load_config(config_file)
 
     assert config.wake_word == "hey assistant"
+    assert config.wake_word_variants == ["Hey Assistant", "assistant"]
     assert len(config.tts.providers) == 2
     assert config.tts.providers[0].backend == "kokoro"
     assert config.tts.providers[0].voices == ["af_sarah", "af_nicole"]
@@ -380,6 +384,39 @@ def test_negative_generation_normalizes_custom_phrases() -> None:
     config = NegativeGenerationConfig(custom_phrases=[" Archer ", "archer", "RJ"])
 
     assert config.custom_phrases == ["Archer", "RJ"]
+
+
+def test_config_rejects_empty_wake_word_variants() -> None:
+    with pytest.raises(ConfigError, match="wake_word_variants cannot be empty when provided"):
+        Config(
+            wake_word="hey assistant",
+            wake_word_variants=[],
+            samples=SamplesConfig(positives=10, negatives_multiplier=2),
+            tts=TTSConfig(providers=[TTSProviderConfig(backend="kokoro", voices=["af_sarah"])]),
+            augmentation=AugmentationConfig(
+                noise_snr=[-10, 10],
+                reverb_probability=0.5,
+                gain_range=[-45, 0],
+            ),
+            output=OutputConfig(path="./datasets", format=["microwakeword"]),
+        )
+
+
+def test_config_normalizes_wake_word_variants() -> None:
+    config = Config(
+        wake_word="hey assistant",
+        wake_word_variants=[" Hey Assistant ", "hey assistant", "assistant"],
+        samples=SamplesConfig(positives=10, negatives_multiplier=2),
+        tts=TTSConfig(providers=[TTSProviderConfig(backend="kokoro", voices=["af_sarah"])]),
+        augmentation=AugmentationConfig(
+            noise_snr=[-10, 10],
+            reverb_probability=0.5,
+            gain_range=[-45, 0],
+        ),
+        output=OutputConfig(path="./datasets", format=["microwakeword"]),
+    )
+
+    assert config.wake_word_variants == ["Hey Assistant", "assistant"]
 
 
 def test_augmentation_noise_snr_requires_two_values() -> None:

@@ -95,10 +95,8 @@ class TestPositiveGenerator:
 
     @patch("soundfile.write")
     @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
-    @patch("wakeword_workbench.dataset.positive_generator.generate_variants")
     def test_generate_success(
         self,
-        mock_generate_variants: MagicMock,
         mock_create_backend: MagicMock,
         mock_sf_write: MagicMock,
         mock_config: Config,
@@ -106,8 +104,6 @@ class TestPositiveGenerator:
         mock_tts_result: TTSResult,
     ) -> None:
         """Test successful sample generation."""
-        # Setup mocks
-        mock_generate_variants.return_value = ["hey vera", "hey vera!"]
         mock_backend = MagicMock()
         mock_backend.synthesize.return_value = mock_tts_result
         mock_backend.set_voice.return_value = None
@@ -138,7 +134,7 @@ class TestPositiveGenerator:
             assert "label" in entry
             assert entry["label"] == 1
             assert "text" in entry
-            assert entry["text"] in ["hey vera", "hey vera!"]
+            assert entry["text"] == "hey vera"
             assert "voice" in entry
             assert entry["voice"] in ["af_sarah", "am_adam"]
             assert entry["backend"] == "kokoro"
@@ -157,10 +153,8 @@ class TestPositiveGenerator:
 
     @patch("soundfile.write")
     @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
-    @patch("wakeword_workbench.dataset.positive_generator.generate_variants")
     def test_generate_handles_tts_error(
         self,
-        mock_generate_variants: MagicMock,
         mock_create_backend: MagicMock,
         mock_sf_write: MagicMock,
         mock_config: Config,
@@ -169,7 +163,6 @@ class TestPositiveGenerator:
         """Test that TTS errors are logged but don't stop generation."""
         from wakeword_workbench.tts.base import TTSError
 
-        mock_generate_variants.return_value = ["hey vera"]
         mock_backend = MagicMock()
         mock_backend.set_voice.return_value = None
 
@@ -207,10 +200,8 @@ class TestPositiveGenerator:
 
     @patch("soundfile.write")
     @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
-    @patch("wakeword_workbench.dataset.positive_generator.generate_variants")
     def test_generate_returns_correct_manifest_path(
         self,
-        mock_generate_variants: MagicMock,
         mock_create_backend: MagicMock,
         mock_sf_write: MagicMock,
         mock_config: Config,
@@ -218,7 +209,6 @@ class TestPositiveGenerator:
         mock_tts_result: TTSResult,
     ) -> None:
         """Test that manifest path is correctly returned."""
-        mock_generate_variants.return_value = ["hey vera"]
         mock_backend = MagicMock()
         mock_backend.synthesize.return_value = mock_tts_result
         mock_backend.set_voice.return_value = None
@@ -231,26 +221,46 @@ class TestPositiveGenerator:
 
     @patch("soundfile.write")
     @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
-    @patch("wakeword_workbench.dataset.positive_generator.generate_variants")
-    def test_generate_falls_back_on_no_variants(
+    def test_generate_uses_exact_wake_word_by_default(
         self,
-        mock_generate_variants: MagicMock,
         mock_create_backend: MagicMock,
         mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
         mock_tts_result: TTSResult,
     ) -> None:
-        """Test fallback when no variants are generated."""
-        mock_generate_variants.return_value = []  # Empty variants
+        """Default generation should use only the exact configured wake word."""
         mock_backend = MagicMock()
         mock_backend.synthesize.return_value = mock_tts_result
         mock_backend.set_voice.return_value = None
         mock_create_backend.return_value = mock_backend
 
-        # Should still generate with fallback
         manifest_path = PositiveGenerator(mock_config, output_dir).generate(1)
         assert manifest_path.exists()
+        mock_backend.synthesize.assert_called_once_with("hey vera")
+
+    @patch("soundfile.write")
+    @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
+    def test_generate_uses_explicit_wake_word_variants(
+        self,
+        mock_create_backend: MagicMock,
+        mock_sf_write: MagicMock,
+        mock_config: Config,
+        output_dir: Path,
+        mock_tts_result: TTSResult,
+    ) -> None:
+        """Explicitly configured wake word variants should be used as provided."""
+        mock_config.wake_word_variants = ["hey vera", "hey, vera"]
+        mock_backend = MagicMock()
+        mock_backend.synthesize.return_value = mock_tts_result
+        mock_backend.set_voice.return_value = None
+        mock_create_backend.return_value = mock_backend
+
+        manifest_path = PositiveGenerator(mock_config, output_dir).generate(4)
+
+        assert manifest_path.exists()
+        used_phrases = {call.args[0] for call in mock_backend.synthesize.call_args_list}
+        assert used_phrases == {"hey vera", "hey, vera"}
 
     def test_generate_raises_on_backend_failure(
         self, mock_config: Config, output_dir: Path
@@ -266,10 +276,8 @@ class TestPositiveGenerator:
 
     @patch("soundfile.write")
     @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
-    @patch("wakeword_workbench.dataset.positive_generator.generate_variants")
     def test_wav_files_are_16khz_mono(
         self,
-        mock_generate_variants: MagicMock,
         mock_create_backend: MagicMock,
         mock_sf_write: MagicMock,
         mock_config: Config,
@@ -277,8 +285,6 @@ class TestPositiveGenerator:
     ) -> None:
         """Test that generated WAV files are 16000 Hz mono."""
         import soundfile as sf
-
-        mock_generate_variants.return_value = ["hey vera"]
 
         # Create stereo audio result
         sample_rate = 24000
@@ -330,10 +336,8 @@ class TestPositiveGenerator:
 
     @patch("soundfile.write")
     @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
-    @patch("wakeword_workbench.dataset.positive_generator.generate_variants")
     def test_generate_uses_multiple_providers(
         self,
-        mock_generate_variants: MagicMock,
         mock_create_backend: MagicMock,
         mock_sf_write: MagicMock,
         tmp_path: Path,
@@ -357,8 +361,6 @@ class TestPositiveGenerator:
             ),
             output=OutputConfig(path=str(tmp_path / "output"), format=["microwakeword"]),
         )
-
-        mock_generate_variants.return_value = ["hey vera"]
 
         kokoro_backend = MagicMock()
         kokoro_backend.synthesize.return_value = mock_tts_result
@@ -387,6 +389,7 @@ class TestPositiveGenerator:
 
         assert {entry["backend"] for entry in entries} == {"kokoro", "piper"}
         assert {entry["voice"] for entry in entries} == {"af_sarah", "en_US-amy-low"}
+        assert {entry["text"] for entry in entries} == {"hey vera"}
 
     @patch("wakeword_workbench.dataset.positive_generator.list_available_backends")
     def test_create_backend_with_speed_passes_supported_speed(
@@ -413,3 +416,53 @@ class TestPositiveGenerator:
         mock_list_available_backends.assert_called_once()
         assert isinstance(backend, SpeedAwareBackend)
         assert SpeedAwareBackend.last_speed == 1.5
+
+    @patch("wakeword_workbench.dataset.positive_generator.log.warning")
+    @patch("wakeword_workbench.dataset.positive_generator.list_available_backends")
+    def test_create_backend_with_default_speed_skips_warning_for_unsupported_backend(
+        self,
+        mock_list_available_backends: MagicMock,
+        mock_warning: MagicMock,
+    ) -> None:
+        """Default speed should not warn when backend lacks explicit speed support."""
+        from wakeword_workbench.dataset.positive_generator import _create_backend_with_speed
+
+        class NoSpeedBackend:
+            def __init__(self) -> None:
+                self.created = True
+
+        with patch.dict(
+            "wakeword_workbench.dataset.positive_generator._BACKENDS",
+            {"piper": NoSpeedBackend},
+            clear=True,
+        ):
+            backend = _create_backend_with_speed("piper", 1.0)
+
+        mock_list_available_backends.assert_called_once()
+        mock_warning.assert_not_called()
+        assert isinstance(backend, NoSpeedBackend)
+
+    @patch("wakeword_workbench.dataset.positive_generator.log.warning")
+    @patch("wakeword_workbench.dataset.positive_generator.list_available_backends")
+    def test_create_backend_with_non_default_speed_warns_for_unsupported_backend(
+        self,
+        mock_list_available_backends: MagicMock,
+        mock_warning: MagicMock,
+    ) -> None:
+        """Non-default speed should still warn when backend ignores speed."""
+        from wakeword_workbench.dataset.positive_generator import _create_backend_with_speed
+
+        class NoSpeedBackend:
+            def __init__(self) -> None:
+                self.created = True
+
+        with patch.dict(
+            "wakeword_workbench.dataset.positive_generator._BACKENDS",
+            {"piper": NoSpeedBackend},
+            clear=True,
+        ):
+            backend = _create_backend_with_speed("piper", 0.8)
+
+        mock_list_available_backends.assert_called_once()
+        mock_warning.assert_called_once_with("backend_no_speed_support", backend="piper", speed=0.8)
+        assert isinstance(backend, NoSpeedBackend)

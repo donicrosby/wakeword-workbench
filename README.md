@@ -136,6 +136,19 @@ samples:
   positives: 100
   negatives_multiplier: 5  # Generate 500 negative samples
 
+negatives:
+  custom_phrases: ["archer"]
+  confusion:
+    enabled: true
+    weight: 0.6
+    min_similarity: 0.6
+  synthetic:
+    enabled: true
+    weight: 0.4
+    strategy: random
+    min_word_count: 2
+    max_word_count: 4
+
 tts:
   providers:
     - backend: "kokoro"
@@ -251,6 +264,13 @@ wakeword-workbench/
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `tts.providers[].speed` | float | 1.0 | Speech speed multiplier (0.0-3.0) |
+| `negatives.confusion.enabled` | bool | true | Enable phonetic confusion negatives |
+| `negatives.custom_phrases` | list[string] | — | Explicit negative phrases to always include first |
+| `negatives.confusion.weight` | float | 0.6 | Relative share of generated negatives |
+| `negatives.confusion.min_similarity` | float | 0.6 | Phonetic similarity threshold |
+| `negatives.synthetic.enabled` | bool | true | Enable synthetic phrase negatives |
+| `negatives.synthetic.weight` | float | 0.4 | Relative share of generated negatives |
+| `negatives.synthetic.strategy` | string | random | One of `random`, `sentence`, `topic` |
 
 See `examples/` directory for sample configurations.
 

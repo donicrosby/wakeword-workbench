@@ -1,0 +1,111 @@
+# Production Wake Word Dataset Configuration — "Hey RJ"
+# =========================================
+# Target: ESPHome Voice Preview Edition (microWakeWord)
+# Strategy: Multi-provider TTS (Kokoro + Piper) for maximum voice diversity
+#
+# Kokoro voices: C+ and above only (per upstream Kokoro-82M VOICES.md grades)
+#   - af_bella   (A-)  — Warm, balanced American female
+#   - af_heart   (A)   — Top-rated American female
+#   - af_nicole  (B-)  — Sharp, clear American female
+#   - bf_emma    (B-)  — Polished British female
+#   - af_aoede   (C+)  — American female
+#   - af_kore    (C+)  — American female
+#   - af_sarah   (C+)  — Younger American female
+#   - am_fenrir  (C+)  — American male
+#   - am_michael (C+)  — Warm American male
+#   - am_puck    (C+)  — American male
+#
+# Kokoro at 0.7x for clearer pronunciation + 1.0x for natural speed variation
+#
+# Piper voices: High-quality (-high) en_US models for best audio fidelity
+#   - en_US-lessac-high   — Clear, neutral American (single speaker)
+#   - en_US-ryan-high     — Male American voice
+#   - en_US-ljspeech-high — Female American (LJSpeech corpus)
+#   - en_US-libritts-high — Multi-speaker LibriTTS corpus
+#
+# Prerequisites:
+#   uv sync --extra kokoro
+#   uv sync --extra kokoro-cuda
+#   uv sync --extra kokoro-openvino
+#   uv sync --extra piper
+#   uv sync --extra piper-cuda
+#   uv run wakeword-workbench validate examples/hey_rj_production.yaml
+
+wake_word: "hey rj"
+
+wake_word_variants:
+  - "hey rj"
+  - "hey are jay"
+
+samples:
+  positives: 10000
+  negatives_multiplier: 5  # Generate 50,000 negative samples
+
+tts:
+  providers:
+    # Kokoro — slowed to 0.7x for clearer articulation on a short phrase
+    - backend: "kokoro"
+      voices:
+        - "af_heart"
+        - "af_bella"
+        - "af_nicole"
+        - "bf_emma"
+        - "af_aoede"
+        - "af_kore"
+        - "af_sarah"
+        - "am_fenrir"
+        - "am_michael"
+        - "am_puck"
+      speed: 0.7
+
+    # Kokoro — normal speed for natural variation
+    - backend: "kokoro"
+      voices:
+        - "af_heart"
+        - "af_bella"
+        - "af_nicole"
+        - "bf_emma"
+        - "af_aoede"
+        - "af_kore"
+        - "af_sarah"
+        - "am_fenrir"
+        - "am_michael"
+        - "am_puck"
+      speed: 1.0
+
+    # Piper — high-quality models at normal speed for natural variation
+    - backend: "piper"
+      voices:
+        - "en_US-lessac-high"
+        - "en_US-ryan-high"
+        - "en_US-ljspeech-high"
+        - "en_US-libritts-high"
+      speed: 1.0
+
+negatives:
+  custom_phrases: ["archer"]
+  confusion:
+    enabled: true
+    weight: 0.6
+    min_similarity: 0.6
+  synthetic:
+    enabled: true
+    weight: 0.4
+    strategy: random
+    min_word_count: 2
+    max_word_count: 4
+
+augmentation:
+  # Aggressive noise injection to simulate real-world ESPHome environments
+  # (kitchen, living room, TV in background, etc.)
+  noise_snr: [-15, -5]
+
+  # High reverb probability — most rooms have some reverb
+  reverb_probability: 0.7
+
+  # Wide gain range to handle whisper-to-shout volume variation
+  gain_range: [-50, -5]
+
+output:
+  path: "./output/hey_rj_production"
+  format: ["microwakeword"]

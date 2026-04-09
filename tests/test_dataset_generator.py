@@ -364,7 +364,7 @@ class TestDatasetGeneratorGenerate:
     @patch.object(DatasetGenerator, "_save_splits")
     @patch("wakeword_workbench.dataset.generator.PositiveGenerator")
     @patch("wakeword_workbench.dataset.generator.Manifest")
-    @patch("wakeword_workbench.dataset.generator._create_backend_with_speed")
+    @patch("wakeword_workbench.dataset.generator._create_backend_for_provider")
     @patch("wakeword_workbench.dataset.generator.merge")
     @patch("wakeword_workbench.dataset.generator.split")
     def test_generate_success(

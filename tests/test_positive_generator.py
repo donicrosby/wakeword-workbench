@@ -94,7 +94,7 @@ class TestPositiveGenerator:
             generator.generate(-1)
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
+    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
     def test_generate_success(
         self,
         mock_create_backend: MagicMock,
@@ -141,7 +141,7 @@ class TestPositiveGenerator:
             assert "duration_ms" in entry
             assert entry["duration_ms"] > 0
 
-        mock_create_backend.assert_called_with("kokoro", 1.0)
+        mock_create_backend.assert_called_with(mock_config.tts.providers[0])
 
         # Verify WAV files were created
         wav_files = list(output_dir.glob("*.wav"))
@@ -152,7 +152,7 @@ class TestPositiveGenerator:
             assert wav_file.stem.startswith("hey_vera_")
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
+    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
     def test_generate_handles_tts_error(
         self,
         mock_create_backend: MagicMock,
@@ -199,7 +199,7 @@ class TestPositiveGenerator:
         assert len(entries) <= 3
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
+    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
     def test_generate_returns_correct_manifest_path(
         self,
         mock_create_backend: MagicMock,
@@ -220,7 +220,7 @@ class TestPositiveGenerator:
         assert manifest_path == output_dir / "positive_manifest.jsonl"
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
+    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
     def test_generate_uses_exact_wake_word_by_default(
         self,
         mock_create_backend: MagicMock,
@@ -240,7 +240,7 @@ class TestPositiveGenerator:
         mock_backend.synthesize.assert_called_once_with("hey vera")
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
+    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
     def test_generate_uses_explicit_wake_word_variants(
         self,
         mock_create_backend: MagicMock,
@@ -267,7 +267,7 @@ class TestPositiveGenerator:
     ) -> None:
         """Test that backend initialization failure raises error."""
         with patch(
-            "wakeword_workbench.dataset.positive_generator._create_backend_with_speed",
+            "wakeword_workbench.dataset.positive_generator._create_backend_for_provider",
             side_effect=Exception("Backend not available"),
         ):
             generator = PositiveGenerator(mock_config, output_dir)
@@ -275,7 +275,7 @@ class TestPositiveGenerator:
                 generator.generate(1)
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
+    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
     def test_wav_files_are_16khz_mono(
         self,
         mock_create_backend: MagicMock,
@@ -335,7 +335,7 @@ class TestPositiveGenerator:
         assert audio.ndim == 1  # Mono
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_with_speed")
+    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
     def test_generate_uses_multiple_providers(
         self,
         mock_create_backend: MagicMock,
@@ -372,12 +372,12 @@ class TestPositiveGenerator:
             "runtime voice changes unsupported"
         )
 
-        def create_backend(backend_name: str, speed: float) -> MagicMock:
-            if backend_name == "kokoro":
+        def create_backend(provider: TTSProviderConfig) -> MagicMock:
+            if provider.backend == "kokoro":
                 return kokoro_backend
-            if backend_name == "piper":
+            if provider.backend == "piper":
                 return piper_backend
-            raise AssertionError(f"unexpected backend {backend_name}")
+            raise AssertionError(f"unexpected backend {provider.backend}")
 
         mock_create_backend.side_effect = create_backend
         mock_sf_write.side_effect = lambda path, audio, sr: _real_write(path, audio, sr)
@@ -392,51 +392,81 @@ class TestPositiveGenerator:
         assert {entry["text"] for entry in entries} == {"hey vera"}
 
     @patch("wakeword_workbench.dataset.positive_generator.list_available_backends")
-    def test_create_backend_with_speed_passes_supported_speed(
+    def test_create_backend_for_provider_passes_supported_runtime_options(
         self,
         mock_list_available_backends: MagicMock,
     ) -> None:
-        """Test that speed is passed when the backend constructor supports it."""
-        from wakeword_workbench.dataset.positive_generator import _create_backend_with_speed
+        """Test that supported runtime options are passed to backend constructors."""
+        from wakeword_workbench.dataset.positive_generator import _create_backend_for_provider
 
         class SpeedAwareBackend:
             last_speed: float | None = None
+            last_acceleration: str | None = None
+            last_device: str | None = None
+            last_model_path: str | None = None
+            last_use_cuda: bool | None = None
 
-            def __init__(self, speed: float) -> None:
+            def __init__(
+                self,
+                speed: float,
+                acceleration: str,
+                device: str,
+                model_path: str,
+                use_cuda: bool,
+            ) -> None:
                 self.speed = speed
                 SpeedAwareBackend.last_speed = speed
+                SpeedAwareBackend.last_acceleration = acceleration
+                SpeedAwareBackend.last_device = device
+                SpeedAwareBackend.last_model_path = model_path
+                SpeedAwareBackend.last_use_cuda = use_cuda
+
+        provider = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_sarah"],
+            speed=1.5,
+            acceleration="cuda",
+            device="cuda:0",
+            model_path="/tmp/model.onnx",
+        )
 
         with patch.dict(
             "wakeword_workbench.dataset.positive_generator._BACKENDS",
             {"kokoro": SpeedAwareBackend},
             clear=True,
         ):
-            backend = _create_backend_with_speed("kokoro", 1.5)
+            backend = _create_backend_for_provider(provider)
 
         mock_list_available_backends.assert_called_once()
         assert isinstance(backend, SpeedAwareBackend)
         assert SpeedAwareBackend.last_speed == 1.5
+        assert SpeedAwareBackend.last_acceleration == "cuda"
+        assert SpeedAwareBackend.last_device == "cuda:0"
+        assert SpeedAwareBackend.last_model_path == "/tmp/model.onnx"
+        assert SpeedAwareBackend.last_use_cuda is True
 
     @patch("wakeword_workbench.dataset.positive_generator.log.warning")
     @patch("wakeword_workbench.dataset.positive_generator.list_available_backends")
-    def test_create_backend_with_default_speed_skips_warning_for_unsupported_backend(
+    def test_create_backend_for_provider_skips_default_warnings_for_unsupported_backend(
         self,
         mock_list_available_backends: MagicMock,
         mock_warning: MagicMock,
     ) -> None:
-        """Default speed should not warn when backend lacks explicit speed support."""
-        from wakeword_workbench.dataset.positive_generator import _create_backend_with_speed
+        """Default CPU settings should not warn when backend lacks optional runtime args."""
+        from wakeword_workbench.dataset.positive_generator import _create_backend_for_provider
 
         class NoSpeedBackend:
             def __init__(self) -> None:
                 self.created = True
+
+        provider = TTSProviderConfig(backend="piper", voices=["voice"], speed=1.0)
 
         with patch.dict(
             "wakeword_workbench.dataset.positive_generator._BACKENDS",
             {"piper": NoSpeedBackend},
             clear=True,
         ):
-            backend = _create_backend_with_speed("piper", 1.0)
+            backend = _create_backend_for_provider(provider)
 
         mock_list_available_backends.assert_called_once()
         mock_warning.assert_not_called()
@@ -444,25 +474,40 @@ class TestPositiveGenerator:
 
     @patch("wakeword_workbench.dataset.positive_generator.log.warning")
     @patch("wakeword_workbench.dataset.positive_generator.list_available_backends")
-    def test_create_backend_with_non_default_speed_warns_for_unsupported_backend(
+    def test_create_backend_for_provider_warns_for_unsupported_runtime_options(
         self,
         mock_list_available_backends: MagicMock,
         mock_warning: MagicMock,
     ) -> None:
-        """Non-default speed should still warn when backend ignores speed."""
-        from wakeword_workbench.dataset.positive_generator import _create_backend_with_speed
+        """Non-default runtime settings should warn when backend ignores them."""
+        from wakeword_workbench.dataset.positive_generator import _create_backend_for_provider
 
         class NoSpeedBackend:
             def __init__(self) -> None:
                 self.created = True
 
+        provider = TTSProviderConfig(
+            backend="custom",
+            voices=["voice"],
+            speed=0.8,
+            acceleration="openvino",
+            device="GPU",
+        )
+
         with patch.dict(
             "wakeword_workbench.dataset.positive_generator._BACKENDS",
-            {"piper": NoSpeedBackend},
+            {"custom": NoSpeedBackend},
             clear=True,
         ):
-            backend = _create_backend_with_speed("piper", 0.8)
+            backend = _create_backend_for_provider(provider)
 
         mock_list_available_backends.assert_called_once()
-        mock_warning.assert_called_once_with("backend_no_speed_support", backend="piper", speed=0.8)
+        assert mock_warning.call_count == 3
+        mock_warning.assert_any_call("backend_no_speed_support", backend="custom", speed=0.8)
+        mock_warning.assert_any_call(
+            "backend_no_acceleration_support",
+            backend="custom",
+            acceleration="openvino",
+        )
+        mock_warning.assert_any_call("backend_no_device_support", backend="custom", device="GPU")
         assert isinstance(backend, NoSpeedBackend)

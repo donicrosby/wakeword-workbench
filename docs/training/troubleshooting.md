@@ -16,7 +16,7 @@ uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
 
-If backend initialization fails, install `uv sync --extra kokoro` or `uv sync --extra piper` and retry.
+If backend initialization fails, install the matching extra (`kokoro`, `kokoro-cuda`, `kokoro-openvino`, `piper`, or `piper-cuda`) and retry.
 
 ---
 
@@ -47,8 +47,17 @@ TTSError: Backend 'kokoro' not available
 # Install Kokoro backend
 uv sync --extra kokoro
 
+# Kokoro with CUDA
+uv sync --extra kokoro-cuda
+
+# Kokoro with OpenVINO
+uv sync --extra kokoro-openvino
+
 # Or install Piper backend
 uv sync --extra piper
+
+# Or Piper with CUDA
+uv sync --extra piper-cuda
 
 # Or install all backends
 uv sync --all-extras

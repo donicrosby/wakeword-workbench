@@ -176,8 +176,12 @@ def validate_command(
             voice_label = "voice" if len(provider.voices) == 1 else "voices"
             console.print(
                 f"  - {provider.backend} ({len(provider.voices)} {voice_label})"
-                f" speed={provider.speed}"
+                f" speed={provider.speed} acceleration={provider.acceleration}"
             )
+            if provider.device is not None:
+                console.print(f"    device={provider.device}")
+            if provider.model_path is not None:
+                console.print(f"    model_path={provider.model_path}")
     except ConfigError as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(code=EXIT_CONFIG_ERROR) from None

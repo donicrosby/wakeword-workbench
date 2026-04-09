@@ -21,7 +21,7 @@ from .metadata import Manifest, ManifestEntry, ManifestError
 from .positive_generator import (
     PositiveGenerator,
     PositiveGeneratorError,
-    _create_backend_with_speed,
+    _create_backend_for_provider,
 )
 from .splitter import SplitValidationError, split
 
@@ -469,18 +469,20 @@ class DatasetGenerator:
 
         entries: list[ManifestEntry] = []
         failed = 0
-        backend_cache: dict[tuple[str, tuple[str, ...], float], TTSBackend] = {}
+        backend_cache: dict[
+            tuple[str, tuple[str, ...], float, str, str | None, str | None], TTSBackend
+        ] = {}
 
         for index, phrase in enumerate(phrases):
             provider, voice = self._select_voice_for_phrase(phrase)
             filename = f"negative_{index:06d}.wav"
             file_path = negatives_dir / filename
-            provider_key = (provider.backend, tuple(provider.voices), provider.speed)
+            provider_key = provider.backend_cache_key()
 
             try:
                 backend = backend_cache.get(provider_key)
                 if backend is None:
-                    backend = _create_backend_with_speed(provider.backend, provider.speed)
+                    backend = _create_backend_for_provider(provider)
                     backend_cache[provider_key] = backend
 
                 try:

@@ -16,7 +16,7 @@ uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
 
-If validation reports a missing backend, install `uv sync --extra kokoro` or `uv sync --extra piper`.
+If validation reports a missing backend, install the matching extra: `uv sync --extra kokoro`, `uv sync --extra kokoro-cuda`, `uv sync --extra kokoro-openvino`, `uv sync --extra piper`, or `uv sync --extra piper-cuda`.
 
 ---
 

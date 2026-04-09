@@ -14,7 +14,7 @@ uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
 
-If your config backend is missing, install `uv sync --extra kokoro` or `uv sync --extra piper`.
+If your config backend is missing, install `uv sync --extra kokoro`, `uv sync --extra kokoro-cuda`, `uv sync --extra kokoro-openvino`, `uv sync --extra piper`, or `uv sync --extra piper-cuda`.
 
 ## Introduction
 
@@ -44,10 +44,13 @@ tts:
         - af_bella
         - af_nicole
       speed: 1.0
+      acceleration: cuda
     - backend: piper
       voices:
         - en_US-lessac-medium
       speed: 1.0
+      acceleration: cuda
+      model_path: ./models/en_US-lessac-medium.onnx
 
 augmentation:
   noise_snr: [-5, 15]
@@ -284,8 +287,11 @@ Configures one or more text-to-speech providers for generating samples.
 
 | Backend | Description | Installation |
 |---------|-------------|--------------|
-| `kokoro` | Kokoro TTS engine | `uv sync --extra kokoro` |
-| `piper` | Piper TTS engine | `uv sync --extra piper` |
+| `kokoro` | Kokoro TTS engine (CPU) | `uv sync --extra kokoro` |
+| `kokoro` | Kokoro TTS engine (CUDA) | `uv sync --extra kokoro-cuda` |
+| `kokoro` | Kokoro TTS engine (OpenVINO) | `uv sync --extra kokoro-openvino` |
+| `piper` | Piper TTS engine (CPU) | `uv sync --extra piper` |
+| `piper` | Piper TTS engine (CUDA) | `uv sync --extra piper-cuda` |
 
 #### Error Messages
 

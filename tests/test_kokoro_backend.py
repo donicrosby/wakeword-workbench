@@ -104,6 +104,7 @@ class TestKokoroBackendSynthesize:
         with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
             # Clear pipeline cache
             KokoroBackend._pipeline = None
+            KokoroBackend._pipelines.clear()
             backend = KokoroBackend()
 
             result = backend.synthesize("Hello world")
@@ -129,6 +130,7 @@ class TestKokoroBackendSynthesize:
 
         with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
             KokoroBackend._pipeline = None
+            KokoroBackend._pipelines.clear()
             backend = KokoroBackend()
 
             result = backend.synthesize("Test")
@@ -150,6 +152,7 @@ class TestKokoroBackendSynthesize:
                 # Mock cache miss
                 mock_get_cache.return_value.get.return_value = None
                 KokoroBackend._pipeline = None
+                KokoroBackend._pipelines.clear()
                 backend = KokoroBackend(voice="af_nicole", speed=1.2)
 
                 backend.synthesize("Test")
@@ -172,6 +175,7 @@ class TestKokoroBackendSynthesize:
 
         with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
             KokoroBackend._pipeline = None
+            KokoroBackend._pipelines.clear()
             backend = KokoroBackend()
 
             result = backend.synthesize("Test")
@@ -250,13 +254,20 @@ class TestKokoroBackendCaching:
                 "wakeword_workbench.tts.kokoro_backend.get_default_cache", return_value=mock_cache
             ):
                 KokoroBackend._pipeline = None
+                KokoroBackend._pipelines.clear()
                 backend = KokoroBackend(voice="af_sarah", speed=1.0)
 
                 # First synthesis should cache the result
                 result = backend.synthesize("hello world")
 
                 # Verify cache contains the result
-                cached = mock_cache.get("hello world", "af_sarah", "kokoro", 1.0)
+                cached = mock_cache.get(
+                    "hello world",
+                    "af_sarah",
+                    "kokoro",
+                    1.0,
+                    options={"acceleration": "cpu", "device": ""},
+                )
                 assert cached is not None
                 np.testing.assert_array_equal(cached.audio, result.audio)
 
@@ -277,13 +288,21 @@ class TestKokoroBackendCaching:
             sample_rate=16000,
             duration=1.0,
         )
-        mock_cache.put("hello world", "af_sarah", "kokoro", cached_result, 1.0)
+        mock_cache.put(
+            "hello world",
+            "af_sarah",
+            "kokoro",
+            cached_result,
+            1.0,
+            options={"acceleration": "cpu", "device": ""},
+        )
 
         with patch("wakeword_workbench.tts.kokoro_backend._PYKOKORO_AVAILABLE", True):
             with patch(
                 "wakeword_workbench.tts.kokoro_backend.get_default_cache", return_value=mock_cache
             ):
                 KokoroBackend._pipeline = None
+                KokoroBackend._pipelines.clear()
                 backend = KokoroBackend(voice="af_sarah", speed=1.0)
 
                 result = backend.synthesize("hello world")
@@ -309,6 +328,7 @@ class TestKokoroBackendCaching:
                 "wakeword_workbench.tts.kokoro_backend.get_default_cache", return_value=mock_cache
             ):
                 KokoroBackend._pipeline = None
+                KokoroBackend._pipelines.clear()
                 backend1 = KokoroBackend(voice="af_sarah", speed=1.0)
                 backend2 = KokoroBackend(voice="af_sarah", speed=1.5)
 
@@ -317,8 +337,20 @@ class TestKokoroBackendCaching:
                 backend2.synthesize("hello")
 
                 # Both should be in cache with different keys
-                cached1 = mock_cache.get("hello", "af_sarah", "kokoro", 1.0)
-                cached2 = mock_cache.get("hello", "af_sarah", "kokoro", 1.5)
+                cached1 = mock_cache.get(
+                    "hello",
+                    "af_sarah",
+                    "kokoro",
+                    1.0,
+                    options={"acceleration": "cpu", "device": ""},
+                )
+                cached2 = mock_cache.get(
+                    "hello",
+                    "af_sarah",
+                    "kokoro",
+                    1.5,
+                    options={"acceleration": "cpu", "device": ""},
+                )
                 assert cached1 is not None
                 assert cached2 is not None
                 # They might have different audio due to speed

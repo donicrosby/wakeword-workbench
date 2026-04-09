@@ -67,6 +67,29 @@ kokoro = [
     "en-core-web-sm",
 ]
 piper = ["piper-tts>=1.2"]
+kokoro-cuda = [
+    "pykokoro[gpu]>=0.6",
+    "spacy>=3.8",
+    "en-core-web-sm",
+]
+kokoro-openvino = [
+    "pykokoro[openvino]>=0.6",
+    "spacy>=3.8",
+    "en-core-web-sm",
+]
+piper-cuda = [
+    "piper-tts>=1.2",
+    "onnxruntime-gpu>=1.22",
+]
+
+[tool.uv]
+conflicts = [
+    [{ extra = "kokoro" }, { extra = "kokoro-cuda" }],
+    [{ extra = "kokoro" }, { extra = "kokoro-openvino" }],
+    [{ extra = "kokoro-cuda" }, { extra = "kokoro-openvino" }],
+    [{ extra = "piper" }, { extra = "piper-cuda" }],
+    [{ extra = "kokoro-openvino" }, { extra = "piper-cuda" }],
+]
 
 [project.scripts]
 wakeword-workbench = "wakeword_workbench.cli:main"

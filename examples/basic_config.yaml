@@ -7,6 +7,19 @@ samples:
   positives: 100
   negatives_multiplier: 5  # Generate 500 negative samples
 
+negatives:
+  custom_phrases: ["archer"]
+  confusion:
+    enabled: true
+    weight: 0.6
+    min_similarity: 0.6
+  synthetic:
+    enabled: true
+    weight: 0.4
+    strategy: random
+    min_word_count: 2
+    max_word_count: 4
+
 tts:
   providers:
     - backend: "kokoro"

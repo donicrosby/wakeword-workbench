@@ -91,6 +91,14 @@ wake_word: "hey vera"
 samples:
   positives: 1000
   negatives_multiplier: 10
+negatives:
+  custom_phrases: ["archer"]
+  confusion:
+    enabled: true
+    weight: 0.6
+  synthetic:
+    enabled: true
+    weight: 0.4
 tts:
   providers:
     - backend: "kokoro"

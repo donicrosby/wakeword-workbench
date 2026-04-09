@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from importlib import import_module
 from typing import Any, ClassVar, Protocol, cast
@@ -149,7 +150,7 @@ class KokoroBackend(TTSBackend):
 
     @staticmethod
     @contextmanager
-    def _temporary_provider_env(provider_name: str | None):
+    def _temporary_provider_env(provider_name: str | None) -> Iterator[None]:
         previous = os.environ.get("ONNX_PROVIDER")
         try:
             if provider_name is None:

@@ -68,6 +68,12 @@ class TestKokoroBackendInit:
                     KokoroBackend(voice="invalid_voice")
                 assert "Voice 'invalid_voice' not available" in str(exc_info.value)
 
+    def test_provider_name_uses_pykokoro_runtime_identifiers(self) -> None:
+        """Runtime identifiers should match pykokoro's accepted provider names."""
+        assert KokoroBackend._provider_name("cpu") is None
+        assert KokoroBackend._provider_name("cuda") == "cuda"
+        assert KokoroBackend._provider_name("openvino") == "openvino"
+
 
 class TestKokoroBackendSynthesize:
     """Test KokoroBackend.synthesize()."""

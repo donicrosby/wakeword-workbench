@@ -169,9 +169,9 @@ class KokoroBackend(TTSBackend):
         if acceleration == "cpu":
             return None
         if acceleration == "cuda":
-            return "CUDAExecutionProvider"
+            return "cuda"
         if acceleration == "openvino":
-            return "OpenVINOExecutionProvider"
+            return "openvino"
         raise TTSError(f"Unsupported Kokoro acceleration: {acceleration}")
 
     @classmethod

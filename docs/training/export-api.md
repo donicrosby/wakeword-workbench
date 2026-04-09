@@ -18,6 +18,8 @@ If backend initialization fails, install `uv sync --extra kokoro` or `uv sync --
 
 ## Overview
 
+Input manifests may come from config-driven negative generation, including confusion-only, synthetic-only, or weighted mixes via the optional `negatives` section in workbench configs.
+
 The export modules provide two distinct export formats:
 
 | Format | Module | Output | Use Case |

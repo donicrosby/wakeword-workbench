@@ -82,6 +82,14 @@ samples:
   positives: 100        # Required
   negatives_multiplier: 5  # Required
 
+negatives:
+  confusion:
+    enabled: true
+    weight: 0.6
+  synthetic:
+    enabled: true
+    weight: 0.4
+
 tts:
   providers:            # Required
     - backend: "kokoro"

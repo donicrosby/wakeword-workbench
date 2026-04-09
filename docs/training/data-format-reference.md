@@ -36,6 +36,8 @@ If validation reports a missing backend, install `uv sync --extra kokoro` or `uv
 
 ## 1. Audio Format Requirements
 
+Workbench dataset creation can now vary the negative mix through the optional `negatives` config section before export; this changes sample composition, not the output file formats described below.
+
 ### 1.1 Common Requirements
 
 Both harnesses expect:

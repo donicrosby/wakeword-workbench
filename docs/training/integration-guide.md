@@ -220,6 +220,14 @@ samples:
   positives: 500
   negatives_multiplier: 3
 
+negatives:
+  confusion:
+    enabled: true
+    weight: 0.7
+  synthetic:
+    enabled: true
+    weight: 0.3
+
 tts:
   providers:
     - backend: "kokoro"

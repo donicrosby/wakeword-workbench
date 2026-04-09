@@ -145,6 +145,7 @@ uv run wakeword-workbench run /path/to/config.yaml
 1. Loads and validates the configuration file
 2. Generates positive samples using TTS
 3. Creates negative samples (confusion phrases, synthetic)
+   - Optional `negatives:` config controls which sources are enabled and how they are weighted
 4. Applies audio augmentation (noise, reverb, gain)
 5. Splits dataset into train/val/test
 6. Exports to specified format(s)

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "wakeword_workbench" / "tts"
 DEFAULT_MAX_SIZE_MB = 1000
+_CACHE_KEY_VERSION = "v2"
 
 
 class TTSCache:
@@ -128,6 +129,7 @@ class TTSCache:
             "voice": voice,
             "backend": backend,
             "speed": speed,
+            "cache_key_version": _CACHE_KEY_VERSION,
             "cached_at": time.time(),
         }
         with open(meta_path, "w", encoding="utf-8") as f:
@@ -213,7 +215,7 @@ class TTSCache:
         """
         import hashlib
 
-        data = f"{text}\x00{voice}\x00{backend}\x00{speed}"
+        data = f"{_CACHE_KEY_VERSION}\x00{text}\x00{voice}\x00{backend}\x00{speed}"
         return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
     # -------------------------------------------------------------------------

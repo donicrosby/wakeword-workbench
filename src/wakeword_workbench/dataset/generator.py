@@ -291,15 +291,25 @@ class DatasetGenerator:
         if total_count <= 0:
             return []
 
-        confusion_count = int(total_count * 0.6)
-        synthetic_count = total_count - confusion_count
+        custom_phrases = self._get_custom_negative_phrases(limit=total_count)
+        remaining_count = max(0, total_count - len(custom_phrases))
 
-        confusion_phrases = self._generate_confusion_phrases(confusion_count)
-        synthetic_phrases = self._generate_synthetic_phrases(synthetic_count)
+        source_counts = self._calculate_negative_source_counts(remaining_count)
+
+        confusion_phrases = (
+            self._generate_confusion_phrases(source_counts["confusion"])
+            if source_counts["confusion"] > 0
+            else []
+        )
+        synthetic_phrases = (
+            self._generate_synthetic_phrases(source_counts["synthetic"])
+            if source_counts["synthetic"] > 0
+            else []
+        )
 
         seen: set[str] = set()
         combined: list[str] = []
-        for phrase in confusion_phrases + synthetic_phrases:
+        for phrase in custom_phrases + confusion_phrases + synthetic_phrases:
             normalized = phrase.strip().lower()
             if not normalized or normalized in seen:
                 continue
@@ -311,24 +321,87 @@ class DatasetGenerator:
         if len(combined) < total_count:
             shortfall = total_count - len(combined)
             log.warning("negative_phrase_shortfall", shortfall=shortfall)
-            fill_phrases = self._generate_synthetic_phrases(shortfall)
-            for phrase in fill_phrases:
-                normalized = phrase.strip().lower()
-                if not normalized or normalized in seen:
-                    continue
-                seen.add(normalized)
-                combined.append(phrase.strip())
-                if len(combined) >= total_count:
+            for source_name in self._get_fill_source_order():
+                fill_phrases = self._generate_phrases_for_source(source_name, shortfall)
+                for phrase in fill_phrases:
+                    normalized = phrase.strip().lower()
+                    if not normalized or normalized in seen:
+                        continue
+                    seen.add(normalized)
+                    combined.append(phrase.strip())
+                    if len(combined) >= total_count:
+                        break
+
+                shortfall = total_count - len(combined)
+                if shortfall <= 0:
                     break
 
         log.info(
             "negative_phrases_generated",
             requested=total_count,
+            custom_generated=len(custom_phrases),
             confusion_generated=len(confusion_phrases),
             synthetic_generated=len(synthetic_phrases),
             total_unique=len(combined),
         )
         return combined
+
+    def _get_custom_negative_phrases(self, limit: int | None = None) -> list[str]:
+        """Return user-supplied custom negative phrases in stable order."""
+        phrases = self.config.negatives.custom_phrases or []
+        if limit is None:
+            return phrases.copy()
+        return phrases[:limit]
+
+    def _calculate_negative_source_counts(self, total_count: int) -> dict[str, int]:
+        """Calculate exact negative counts per enabled source."""
+        negatives = self.config.negatives
+        weighted_sources: list[tuple[str, float]] = []
+        if negatives.confusion.enabled:
+            weighted_sources.append(("confusion", negatives.confusion.weight))
+        if negatives.synthetic.enabled:
+            weighted_sources.append(("synthetic", negatives.synthetic.weight))
+
+        total_weight = sum(weight for _name, weight in weighted_sources)
+        counts = {"confusion": 0, "synthetic": 0}
+        raw_allocations: list[tuple[str, float]] = []
+
+        for name, weight in weighted_sources:
+            raw_count = total_count * (weight / total_weight)
+            raw_allocations.append((name, raw_count))
+            counts[name] = int(raw_count)
+
+        remaining = total_count - sum(counts.values())
+        if remaining > 0:
+            remainders = sorted(
+                raw_allocations,
+                key=lambda item: (item[1] - int(item[1]), item[1]),
+                reverse=True,
+            )
+            for index in range(remaining):
+                counts[remainders[index % len(remainders)][0]] += 1
+
+        return counts
+
+    def _get_fill_source_order(self) -> list[str]:
+        """Return enabled negative sources ordered by fill priority."""
+        negatives = self.config.negatives
+        weighted_sources: list[tuple[str, float]] = []
+        if negatives.confusion.enabled:
+            weighted_sources.append(("confusion", negatives.confusion.weight))
+        if negatives.synthetic.enabled:
+            weighted_sources.append(("synthetic", negatives.synthetic.weight))
+
+        weighted_sources.sort(key=lambda item: item[1], reverse=True)
+        return [name for name, _weight in weighted_sources]
+
+    def _generate_phrases_for_source(self, source_name: str, count: int) -> list[str]:
+        """Dispatch phrase generation by configured negative source."""
+        if source_name == "confusion":
+            return self._generate_confusion_phrases(count)
+        if source_name == "synthetic":
+            return self._generate_synthetic_phrases(count)
+        raise GeneratorConfigError(f"Unknown negative source: {source_name}")
 
     def _generate_confusion_phrases(self, count: int) -> list[str]:
         """Generate confusion phrases.
@@ -346,7 +419,11 @@ class DatasetGenerator:
             return []
 
         try:
-            return generate_confusions(self.config.wake_word, count=count)
+            return generate_confusions(
+                self.config.wake_word,
+                count=count,
+                min_similarity=self.config.negatives.confusion.min_similarity,
+            )
         except ImportError as exc:
             raise GeneratorError(f"Failed generating confusion phrases: {exc}") from exc
         except ValueError as exc:
@@ -364,7 +441,16 @@ class DatasetGenerator:
         if count <= 0:
             return []
 
-        return generate_synthetic_negatives(count=count, wake_word=self.config.wake_word)
+        synthetic = self.config.negatives.synthetic
+        return generate_synthetic_negatives(
+            count=count,
+            wake_word=self.config.wake_word,
+            word_list=synthetic.word_list,
+            min_word_count=synthetic.min_word_count,
+            max_word_count=synthetic.max_word_count,
+            strategy=synthetic.strategy,
+            topics=synthetic.topics,
+        )
 
     def _synthesize_negatives(self, phrases: list[str]) -> Manifest:
         """Synthesize audio for negative phrases and create a Manifest.
@@ -416,7 +502,7 @@ class DatasetGenerator:
                 duration_ms = int(len(audio) / 16000 * 1000)
                 entries.append(
                     ManifestEntry(
-                        path=str(file_path),
+                        path=f"negatives/{filename}",
                         label=0,
                         text=phrase,
                         voice=voice,

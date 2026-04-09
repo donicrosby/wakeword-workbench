@@ -199,7 +199,7 @@ Building a wake word model is not a one-time task. It's an iterative cycle:
 
 3. **Evaluate**: Measure your model's FAR and FRR on a test set. Identify where it fails.
 
-4. **Mine hard negatives**: Find examples that confuse your model. These are phrases that sound similar to your wake word but aren't. Add these to your negative examples.
+4. **Mine hard negatives**: Find examples that confuse your model. These are phrases that sound similar to your wake word but aren't. Add these to your negative examples. The built-in `negatives` config can also bias the generated dataset toward phonetic confusions or synthetic phrase negatives before mining.
 
 5. **Retrain**: Train a new model with your expanded dataset (original positives, original negatives, and hard negatives).
 

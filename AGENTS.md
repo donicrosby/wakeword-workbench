@@ -58,6 +58,7 @@ If validation fails because a backend is missing, install the required backend e
 | Update config schema | `src/wakeword_workbench/config.py` | Dataclass + `__post_init__` validation |
 | Add TTS backend | `src/wakeword_workbench/tts/` | Extend `TTSBackend` ABC, register via `register_backend()` |
 | Add audio transform | `src/wakeword_workbench/augment/` | Implement `Transform` Protocol, auto-registered |
+| Tune negative generation | `src/wakeword_workbench/config.py` + `src/wakeword_workbench/dataset/generator.py` | Optional `negatives` config controls confusion/synthetic mix |
 | Update test fixtures | `tests/conftest.py` | Shared fixtures: `mock_audio`, `sample_config`, `valid_config_file` |
 | Check spec | `specs/wakeword_workbench_opencode_spec.md` | Phase-based implementation plan |
 

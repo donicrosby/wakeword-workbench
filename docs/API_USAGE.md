@@ -78,6 +78,18 @@ samples = config.samples
 samples.positives  # int (must be > 0)
 samples.negatives_multiplier  # int (must be > 0)
 
+# Negative generation configuration
+negatives = config.negatives
+negatives.custom_phrases  # list[str] | None (explicit phrases like ["archer"])
+negatives.confusion.weight  # float (default 0.6)
+negatives.confusion.min_similarity  # float (0.0-1.0)
+negatives.synthetic.strategy  # "random", "sentence", or "topic"
+negatives.synthetic.min_word_count  # int >= 1
+
+# Positive phrase configuration
+config.wake_word  # exact wake word string
+config.wake_word_variants  # list[str] | None; if set, only these phrases are generated
+
 # TTS configuration
 tts = config.tts
 tts.providers  # list[TTSProviderConfig] (must not be empty)

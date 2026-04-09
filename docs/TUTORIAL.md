@@ -150,6 +150,8 @@ EOF
 | `wake_word` | The phrase to train for: "Hey Helper" |
 | `samples.positives` | Generate 1000 positive samples |
 | `samples.negatives_multiplier` | Generate 5000 negatives (1000 × 5) |
+| `negatives.confusion` / `negatives.synthetic` | Control which negative generators run and how strongly each contributes |
+| `negatives.custom_phrases` | Force known false-trigger phrases like similar names into the negative set |
 | `tts.providers[].backend` | Use Kokoro TTS engine |
 | `tts.providers[].voices` | 5 different voices for diversity |
 | `tts.providers[].speed` | Normal speech rate |

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
 
@@ -100,6 +100,88 @@ class AugmentationConfig:
 
 
 @dataclass
+class NegativeConfusionConfig:
+    """Confusion-phrase negative generation settings."""
+
+    enabled: bool = True
+    weight: float = 0.6
+    min_similarity: float = 0.6
+
+    def __post_init__(self) -> None:
+        if self.weight < 0:
+            raise ConfigError("confusion weight must be non-negative")
+        if not 0 <= self.min_similarity <= 1:
+            raise ConfigError("confusion min_similarity must be between 0 and 1")
+
+
+@dataclass
+class NegativeSyntheticConfig:
+    """Synthetic negative generation settings."""
+
+    enabled: bool = True
+    weight: float = 0.4
+    strategy: str = "random"
+    min_word_count: int = 2
+    max_word_count: int = 4
+    topics: list[str] | None = None
+    word_list: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.weight < 0:
+            raise ConfigError("synthetic weight must be non-negative")
+        if self.strategy not in {"random", "sentence", "topic"}:
+            raise ConfigError("synthetic strategy must be one of: random, sentence, topic")
+        if self.min_word_count < 1:
+            raise ConfigError("synthetic min_word_count must be at least 1")
+        if self.max_word_count < self.min_word_count:
+            raise ConfigError(
+                "synthetic max_word_count must be greater than or equal to min_word_count"
+            )
+        if self.topics is not None and len(self.topics) == 0:
+            raise ConfigError("synthetic topics cannot be empty when provided")
+        if self.word_list is not None and len(self.word_list) == 0:
+            raise ConfigError("synthetic word_list cannot be empty when provided")
+
+
+@dataclass
+class NegativeGenerationConfig:
+    """Negative generation configuration."""
+
+    confusion: NegativeConfusionConfig = field(default_factory=NegativeConfusionConfig)
+    synthetic: NegativeSyntheticConfig = field(default_factory=NegativeSyntheticConfig)
+    custom_phrases: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        if not self.confusion.enabled and not self.synthetic.enabled:
+            raise ConfigError("at least one negative source must be enabled")
+
+        enabled_weight = 0.0
+        if self.confusion.enabled:
+            enabled_weight += self.confusion.weight
+        if self.synthetic.enabled:
+            enabled_weight += self.synthetic.weight
+
+        if enabled_weight <= 0:
+            raise ConfigError("enabled negative sources must have a positive total weight")
+
+        if self.custom_phrases is not None:
+            if len(self.custom_phrases) == 0:
+                raise ConfigError("custom_phrases cannot be empty when provided")
+            normalized_custom_phrases: list[str] = []
+            seen_phrases: set[str] = set()
+            for phrase in self.custom_phrases:
+                cleaned = phrase.strip()
+                if not cleaned:
+                    raise ConfigError("custom_phrases cannot contain empty values")
+                normalized = cleaned.lower()
+                if normalized in seen_phrases:
+                    continue
+                seen_phrases.add(normalized)
+                normalized_custom_phrases.append(cleaned)
+            self.custom_phrases = normalized_custom_phrases
+
+
+@dataclass
 class OutputConfig:
     """Output configuration."""
 
@@ -125,6 +207,26 @@ class Config:
     tts: TTSConfig
     augmentation: AugmentationConfig
     output: OutputConfig
+    wake_word_variants: list[str] | None = None
+    negatives: NegativeGenerationConfig = field(default_factory=NegativeGenerationConfig)
+
+    def __post_init__(self) -> None:
+        if self.wake_word_variants is not None:
+            if len(self.wake_word_variants) == 0:
+                raise ConfigError("wake_word_variants cannot be empty when provided")
+
+            normalized_variants: list[str] = []
+            seen_variants: set[str] = set()
+            for variant in self.wake_word_variants:
+                cleaned = " ".join(variant.split())
+                if not cleaned:
+                    raise ConfigError("wake_word_variants cannot contain empty values")
+                normalized = cleaned.lower()
+                if normalized in seen_variants:
+                    continue
+                seen_variants.add(normalized)
+                normalized_variants.append(cleaned)
+            self.wake_word_variants = normalized_variants
 
 
 def load_config(path: str | Path) -> Config:
@@ -199,10 +301,33 @@ def load_config(path: str | Path) -> Config:
         format=output_data["format"],
     )
 
+    negatives_data = data.get("negatives", {})
+    confusion_data = negatives_data.get("confusion", {})
+    synthetic_data = negatives_data.get("synthetic", {})
+    negatives = NegativeGenerationConfig(
+        confusion=NegativeConfusionConfig(
+            enabled=confusion_data.get("enabled", True),
+            weight=confusion_data.get("weight", 0.6),
+            min_similarity=confusion_data.get("min_similarity", 0.6),
+        ),
+        synthetic=NegativeSyntheticConfig(
+            enabled=synthetic_data.get("enabled", True),
+            weight=synthetic_data.get("weight", 0.4),
+            strategy=synthetic_data.get("strategy", "random"),
+            min_word_count=synthetic_data.get("min_word_count", 2),
+            max_word_count=synthetic_data.get("max_word_count", 4),
+            topics=synthetic_data.get("topics"),
+            word_list=synthetic_data.get("word_list"),
+        ),
+        custom_phrases=negatives_data.get("custom_phrases"),
+    )
+
     return Config(
         wake_word=data["wake_word"],
+        wake_word_variants=data.get("wake_word_variants"),
         samples=samples,
         tts=tts,
         augmentation=augmentation,
         output=output,
+        negatives=negatives,
     )

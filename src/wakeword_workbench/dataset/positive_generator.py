@@ -16,8 +16,6 @@ from wakeword_workbench.logging_config import get_logger
 from wakeword_workbench.tts.base import TTSBackend, TTSError
 from wakeword_workbench.tts.registry import _BACKENDS, list_available_backends
 
-from .phrase_variants import generate_variants
-
 log = get_logger(__name__)
 
 
@@ -51,7 +49,8 @@ def _create_backend_with_speed(backend_name: str, speed: float) -> TTSBackend:
         backend_factory: Any = backend_cls
         return cast(TTSBackend, backend_factory(speed=speed))
 
-    log.warning("backend_no_speed_support", backend=backend_name, speed=speed)
+    if speed != 1.0:
+        log.warning("backend_no_speed_support", backend=backend_name, speed=speed)
     return backend_cls()
 
 
@@ -112,14 +111,8 @@ class PositiveGenerator:
 
         log.info("generating_positive_samples", count=count)
 
-        # Generate text variants
-        variants = generate_variants(self._wake_word)
-        if not variants:
-            # Fallback to just the wake word if no variants generated
-            variants = [self._wake_word.replace("_", " ")]
-            log.warning("no_variants_generated", fallback=variants[0])
-
-        log.info("variants_generated", count=len(variants), variants=variants[:3])
+        variants = self._get_positive_phrases()
+        log.info("positive_phrases_selected", count=len(variants), phrases=variants[:3])
 
         # Build generation list: (provider, phrase, voice) combinations
         combinations: list[tuple[TTSProviderConfig, str, str]] = []
@@ -201,7 +194,7 @@ class PositiveGenerator:
                         # Add to manifest
                         manifest_entries.append(
                             {
-                                "path": str(file_path),
+                                "path": filename,
                                 "label": 1,
                                 "text": phrase,
                                 "voice": voice,
@@ -250,6 +243,16 @@ class PositiveGenerator:
         )
 
         return manifest_path
+
+    def _get_positive_phrases(self) -> list[str]:
+        """Return the explicit positive phrases to synthesize.
+
+        Defaults to the exact wake word only. Optional variants must be provided
+        explicitly by the end user in config.
+        """
+        if self.config.wake_word_variants is not None:
+            return self.config.wake_word_variants.copy()
+        return [self._wake_word.replace("_", " ")]
 
     def _ensure_format(self, audio: np.ndarray, sample_rate: int) -> np.ndarray:
         """Ensure audio is at 16000 Hz sample rate.

@@ -90,6 +90,37 @@ wake_word: "Hey Assistant"
 wake_word: "okay google"
 ```
 
+By default, positive sample generation uses only this exact wake word.
+
+---
+
+### `wake_word_variants`
+
+**Type:** `list[string]`
+**Required:** No
+
+Optional explicit list of positive phrases to synthesize. If provided, the pipeline uses only this list and does not invent additional text variants automatically.
+
+#### Validation Rules
+
+- Cannot be an empty list
+- Cannot contain blank values
+- Duplicate entries are removed while preserving order
+
+#### Examples
+
+```yaml
+# Exact wake word only (default when omitted)
+wake_word: "hey vera"
+
+# Explicit curated positive phrase list
+wake_word: "hey vera"
+wake_word_variants:
+  - "hey vera"
+  - "hey, vera"
+  - "hey vera please"
+```
+
 ---
 
 ### `samples`
@@ -136,6 +167,95 @@ samples:
 samples:
   positives: 2000
   negatives_multiplier: 1
+```
+
+---
+
+### `negatives`
+
+**Type:** `NegativeGenerationConfig` (nested object)
+**Required:** No
+
+Controls which negative generators run and how the requested negative total is divided between them.
+
+#### Fields
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `custom_phrases` | `list[string]` | No | `null` | Explicit negative phrases to seed into the dataset before generated negatives |
+| `confusion.enabled` | `bool` | No | `true` | Enable phonetic confusion negatives |
+| `confusion.weight` | `float` | No | `0.6` | Relative share of negatives assigned to confusion generation |
+| `confusion.min_similarity` | `float` | No | `0.6` | Similarity threshold passed to `generate_confusions()` |
+| `synthetic.enabled` | `bool` | No | `true` | Enable synthetic phrase negatives |
+| `synthetic.weight` | `float` | No | `0.4` | Relative share of negatives assigned to synthetic generation |
+| `synthetic.strategy` | `string` | No | `random` | One of `random`, `sentence`, `topic` |
+| `synthetic.min_word_count` | `int` | No | `2` | Minimum words per synthetic phrase |
+| `synthetic.max_word_count` | `int` | No | `4` | Maximum words per synthetic phrase |
+| `synthetic.topics` | `list[string]` | No | `null` | Optional topic allowlist for `topic` strategy |
+| `synthetic.word_list` | `list[string]` | No | `null` | Optional custom vocabulary for synthetic phrases |
+
+#### Validation Rules
+
+- At least one negative source must be enabled
+- Enabled negative sources must have a positive total weight
+- `custom_phrases` cannot be empty when provided
+- `custom_phrases` cannot contain blank values
+- `confusion.weight` and `synthetic.weight` must be non-negative
+- `confusion.min_similarity` must be in range `[0, 1]`
+- `synthetic.strategy` must be one of `random`, `sentence`, `topic`
+- `synthetic.min_word_count` must be at least 1
+- `synthetic.max_word_count` must be greater than or equal to `synthetic.min_word_count`
+
+#### Examples
+
+```yaml
+# Default behavior (same as previous hardcoded pipeline)
+negatives:
+  custom_phrases: [archer, richard]
+  confusion:
+    enabled: true
+    weight: 0.6
+    min_similarity: 0.6
+  synthetic:
+    enabled: true
+    weight: 0.4
+    strategy: random
+    min_word_count: 2
+    max_word_count: 4
+
+# Confusion-heavy run
+negatives:
+  custom_phrases: [archer, archer assistant]
+  confusion:
+    enabled: true
+    weight: 0.85
+    min_similarity: 0.75
+  synthetic:
+    enabled: true
+    weight: 0.15
+    strategy: sentence
+
+# Synthetic-only run with custom vocabulary
+negatives:
+  confusion:
+    enabled: false
+    weight: 0.0
+  synthetic:
+    enabled: true
+    weight: 1.0
+    strategy: topic
+    topics: [technology, weather]
+    word_list: [status, report, lights, timer, weather, kitchen]
+
+# Explicitly include known false-trigger phrases like similar names
+negatives:
+  custom_phrases: [archer, rj, hey archer]
+  confusion:
+    enabled: true
+    weight: 0.7
+  synthetic:
+    enabled: true
+    weight: 0.3
 ```
 
 ---

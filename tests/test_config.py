@@ -7,7 +7,11 @@ import pytest
 
 from wakeword_workbench.config import (
     AugmentationConfig,
+    Config,
     ConfigError,
+    NegativeConfusionConfig,
+    NegativeGenerationConfig,
+    NegativeSyntheticConfig,
     OutputConfig,
     SamplesConfig,
     TTSConfig,
@@ -39,9 +43,24 @@ output:
 
 FULL_VALID_CONFIG = dedent("""
 wake_word: "hey assistant"
+wake_word_variants: ["Hey Assistant", "hey assistant", " assistant "]
 samples:
   positives: 1000
   negatives_multiplier: 5
+negatives:
+  custom_phrases: [archer, archer,  assistant]
+  confusion:
+    enabled: true
+    weight: 0.75
+    min_similarity: 0.8
+  synthetic:
+    enabled: true
+    weight: 0.25
+    strategy: topic
+    min_word_count: 3
+    max_word_count: 5
+    topics: [technology, weather]
+    word_list: [custom, negative, phrase, pool]
 tts:
   providers:
     - backend: kokoro
@@ -70,6 +89,7 @@ def test_load_config_valid_minimal(tmp_path: Path) -> None:
     config = load_config(config_file)
 
     assert config.wake_word == "hey assistant"
+    assert config.wake_word_variants is None
     assert config.samples.positives == 1000
     assert config.samples.negatives_multiplier == 5
     assert len(config.tts.providers) == 1
@@ -81,6 +101,16 @@ def test_load_config_valid_minimal(tmp_path: Path) -> None:
     assert config.augmentation.gain_range == [-45, 0]
     assert config.output.path == "./datasets"
     assert config.output.format == ["microwakeword"]
+    assert config.negatives.confusion.enabled is True
+    assert config.negatives.confusion.weight == 0.6
+    assert config.negatives.confusion.min_similarity == 0.6
+    assert config.negatives.synthetic.enabled is True
+    assert config.negatives.synthetic.weight == 0.4
+    assert config.negatives.synthetic.strategy == "random"
+    assert config.negatives.synthetic.min_word_count == 2
+    assert config.negatives.synthetic.max_word_count == 4
+    assert config.negatives.synthetic.topics is None
+    assert config.negatives.synthetic.word_list is None
 
 
 def test_load_config_valid_full(tmp_path: Path) -> None:
@@ -90,6 +120,7 @@ def test_load_config_valid_full(tmp_path: Path) -> None:
     config = load_config(config_file)
 
     assert config.wake_word == "hey assistant"
+    assert config.wake_word_variants == ["Hey Assistant", "assistant"]
     assert len(config.tts.providers) == 2
     assert config.tts.providers[0].backend == "kokoro"
     assert config.tts.providers[0].voices == ["af_sarah", "af_nicole"]
@@ -98,6 +129,15 @@ def test_load_config_valid_full(tmp_path: Path) -> None:
     assert config.tts.providers[1].voices == ["en_US-amy-low"]
     assert config.tts.providers[1].speed == 1.2
     assert config.output.format == ["microwakeword", "openwakeword"]
+    assert config.negatives.confusion.weight == 0.75
+    assert config.negatives.confusion.min_similarity == 0.8
+    assert config.negatives.synthetic.weight == 0.25
+    assert config.negatives.synthetic.strategy == "topic"
+    assert config.negatives.synthetic.min_word_count == 3
+    assert config.negatives.synthetic.max_word_count == 5
+    assert config.negatives.synthetic.topics == ["technology", "weather"]
+    assert config.negatives.synthetic.word_list == ["custom", "negative", "phrase", "pool"]
+    assert config.negatives.custom_phrases == ["archer", "assistant"]
 
 
 def test_load_config_string_path(tmp_path: Path) -> None:
@@ -278,6 +318,105 @@ def test_tts_speed_range() -> None:
 def test_tts_config_empty_providers() -> None:
     with pytest.raises(ConfigError, match="providers cannot be empty"):
         TTSConfig(providers=[])
+
+
+def test_negative_confusion_weight_must_be_non_negative() -> None:
+    with pytest.raises(ConfigError, match="confusion weight must be non-negative"):
+        NegativeConfusionConfig(weight=-0.1)
+
+
+def test_negative_confusion_min_similarity_range() -> None:
+    with pytest.raises(ConfigError, match="confusion min_similarity must be between 0 and 1"):
+        NegativeConfusionConfig(min_similarity=-0.1)
+    with pytest.raises(ConfigError, match="confusion min_similarity must be between 0 and 1"):
+        NegativeConfusionConfig(min_similarity=1.1)
+
+
+def test_negative_synthetic_weight_must_be_non_negative() -> None:
+    with pytest.raises(ConfigError, match="synthetic weight must be non-negative"):
+        NegativeSyntheticConfig(weight=-0.1)
+
+
+def test_negative_synthetic_strategy_validation() -> None:
+    with pytest.raises(ConfigError, match="synthetic strategy must be one of"):
+        NegativeSyntheticConfig(strategy="invalid")
+
+
+def test_negative_synthetic_word_count_validation() -> None:
+    with pytest.raises(ConfigError, match="synthetic min_word_count must be at least 1"):
+        NegativeSyntheticConfig(min_word_count=0)
+    with pytest.raises(
+        ConfigError,
+        match="synthetic max_word_count must be greater than or equal to min_word_count",
+    ):
+        NegativeSyntheticConfig(min_word_count=3, max_word_count=2)
+
+
+def test_negative_generation_requires_enabled_source() -> None:
+    with pytest.raises(ConfigError, match="at least one negative source must be enabled"):
+        NegativeGenerationConfig(
+            confusion=NegativeConfusionConfig(enabled=False),
+            synthetic=NegativeSyntheticConfig(enabled=False),
+        )
+
+
+def test_negative_generation_requires_positive_enabled_weight() -> None:
+    with pytest.raises(
+        ConfigError, match="enabled negative sources must have a positive total weight"
+    ):
+        NegativeGenerationConfig(
+            confusion=NegativeConfusionConfig(enabled=True, weight=0.0),
+            synthetic=NegativeSyntheticConfig(enabled=False),
+        )
+
+
+def test_negative_generation_rejects_empty_custom_phrase_list() -> None:
+    with pytest.raises(ConfigError, match="custom_phrases cannot be empty when provided"):
+        NegativeGenerationConfig(custom_phrases=[])
+
+
+def test_negative_generation_rejects_blank_custom_phrases() -> None:
+    with pytest.raises(ConfigError, match="custom_phrases cannot contain empty values"):
+        NegativeGenerationConfig(custom_phrases=["archer", "   "])
+
+
+def test_negative_generation_normalizes_custom_phrases() -> None:
+    config = NegativeGenerationConfig(custom_phrases=[" Archer ", "archer", "RJ"])
+
+    assert config.custom_phrases == ["Archer", "RJ"]
+
+
+def test_config_rejects_empty_wake_word_variants() -> None:
+    with pytest.raises(ConfigError, match="wake_word_variants cannot be empty when provided"):
+        Config(
+            wake_word="hey assistant",
+            wake_word_variants=[],
+            samples=SamplesConfig(positives=10, negatives_multiplier=2),
+            tts=TTSConfig(providers=[TTSProviderConfig(backend="kokoro", voices=["af_sarah"])]),
+            augmentation=AugmentationConfig(
+                noise_snr=[-10, 10],
+                reverb_probability=0.5,
+                gain_range=[-45, 0],
+            ),
+            output=OutputConfig(path="./datasets", format=["microwakeword"]),
+        )
+
+
+def test_config_normalizes_wake_word_variants() -> None:
+    config = Config(
+        wake_word="hey assistant",
+        wake_word_variants=[" Hey Assistant ", "hey assistant", "assistant"],
+        samples=SamplesConfig(positives=10, negatives_multiplier=2),
+        tts=TTSConfig(providers=[TTSProviderConfig(backend="kokoro", voices=["af_sarah"])]),
+        augmentation=AugmentationConfig(
+            noise_snr=[-10, 10],
+            reverb_probability=0.5,
+            gain_range=[-45, 0],
+        ),
+        output=OutputConfig(path="./datasets", format=["microwakeword"]),
+    )
+
+    assert config.wake_word_variants == ["Hey Assistant", "assistant"]
 
 
 def test_augmentation_noise_snr_requires_two_values() -> None:

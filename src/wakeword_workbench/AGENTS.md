@@ -74,6 +74,7 @@ wakeword_workbench/
 | Add new TTS engine | `tts/base.py` + `tts/registry.py` | Extend `TTSBackend`, call `register_backend()` |
 | Add augment transform | `augment/pipeline.py` + new module | Implement `Transform` Protocol, add to `_auto_register()` |
 | Update config fields | `config.py` | Add dataclass field + `__post_init__` validation |
+| Tune negative generation | `config.py` + `dataset/generator.py` | Optional `negatives` section controls confusion/synthetic mix |
 | Change logging format | `logging_config.py` | Modify `_console_renderer` or `_json_renderer` |
 | Add CLI subcommand | `cli.py` | Add `@app.command()` function |
 

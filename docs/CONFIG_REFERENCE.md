@@ -90,6 +90,37 @@ wake_word: "Hey Assistant"
 wake_word: "okay google"
 ```
 
+By default, positive sample generation uses only this exact wake word.
+
+---
+
+### `wake_word_variants`
+
+**Type:** `list[string]`
+**Required:** No
+
+Optional explicit list of positive phrases to synthesize. If provided, the pipeline uses only this list and does not invent additional text variants automatically.
+
+#### Validation Rules
+
+- Cannot be an empty list
+- Cannot contain blank values
+- Duplicate entries are removed while preserving order
+
+#### Examples
+
+```yaml
+# Exact wake word only (default when omitted)
+wake_word: "hey vera"
+
+# Explicit curated positive phrase list
+wake_word: "hey vera"
+wake_word_variants:
+  - "hey vera"
+  - "hey, vera"
+  - "hey vera please"
+```
+
 ---
 
 ### `samples`

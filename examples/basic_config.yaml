@@ -8,7 +8,7 @@ samples:
   negatives_multiplier: 5  # Generate 500 negative samples
 
 negatives:
-  custom_phrases: ["archer"]
+  custom_phrases: ["kira"]
   confusion:
     enabled: true
     weight: 0.6

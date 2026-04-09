@@ -132,12 +132,17 @@ Create `config.yaml`:
 # Wake Word Dataset Configuration
 wake_word: "hey vera"
 
+# Optional: explicit list of positive phrases to synthesize.
+# If omitted, the pipeline uses only the exact wake_word above.
+# wake_word_variants:
+#   - "hey vera"
+#   - "hey, vera"
+
 samples:
   positives: 100
   negatives_multiplier: 5  # Generate 500 negative samples
 
 negatives:
-  custom_phrases: ["archer"]
   confusion:
     enabled: true
     weight: 0.6
@@ -263,6 +268,7 @@ wakeword-workbench/
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `wake_word_variants` | list[string] | — | Explicit positive phrases to synthesize; if omitted, only `wake_word` is used |
 | `tts.providers[].speed` | float | 1.0 | Speech speed multiplier (0.0-3.0) |
 | `negatives.confusion.enabled` | bool | true | Enable phonetic confusion negatives |
 | `negatives.custom_phrases` | list[string] | — | Explicit negative phrases to always include first |

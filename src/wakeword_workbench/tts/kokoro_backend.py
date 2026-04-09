@@ -28,17 +28,41 @@ from .cache import get_default_cache
 _KOKORO_SAMPLE_RATE = 24000
 _TARGET_SAMPLE_RATE = 16000
 
-# Common Kokoro voices available
+# All English voices from upstream Kokoro-82M (American + British)
+# See: https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md
 _COMMON_VOICES = [
-    "af_sarah",
+    # American English — Female
+    "af_alloy",
+    "af_aoede",
+    "af_bella",
+    "af_heart",
+    "af_jessica",
+    "af_kore",
     "af_nicole",
+    "af_nova",
+    "af_river",
+    "af_sarah",
     "af_sky",
+    # American English — Male
     "am_adam",
+    "am_echo",
+    "am_eric",
+    "am_fenrir",
+    "am_liam",
     "am_michael",
+    "am_onyx",
+    "am_puck",
+    "am_santa",
+    # British English — Female
+    "bf_alice",
     "bf_emma",
     "bf_isabella",
-    "bm_lewis",
+    "bf_lily",
+    # British English — Male
+    "bm_daniel",
+    "bm_fable",
     "bm_george",
+    "bm_lewis",
 ]
 
 

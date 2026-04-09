@@ -134,6 +134,22 @@ class TestCacheKeyGeneration:
         assert len(key) == 64
         assert all(c in "0123456789abcdef" for c in key)
 
+    def test_put_writes_cache_key_version_to_metadata(self, tmp_path: Path) -> None:
+        """Metadata should record the cache key version for debugging/invalidation."""
+        cache = TTSCache(cache_dir=tmp_path / "tts_cache")
+        result = make_result()
+
+        cache.put("hello", "af_sarah", "kokoro", result)
+        key = cache._make_key("hello", "af_sarah", "kokoro", 1.0)
+        meta_path = cache._cache_dir / f"{key}.json"
+
+        import json
+
+        with open(meta_path, encoding="utf-8") as f:
+            meta = json.load(f)
+
+        assert meta["cache_key_version"] == "v2"
+
 
 # ---------------------------------------------------------------------------
 # LRU eviction

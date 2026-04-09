@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import urllib.request
 import wave
 from importlib import import_module
 from io import BytesIO
@@ -37,12 +36,8 @@ if TYPE_CHECKING:
 
 # Default Piper model configuration
 _DEFAULT_MODEL_NAME = "en_US-lessac-medium"
-_DEFAULT_MODEL_URL = (
-    f"https://github.com/OHF-Voice/piper1-gpl/releases/download/v1.4.2/{_DEFAULT_MODEL_NAME}.onnx"
-)
-_PIPER_MODEL_CACHE_DIR = Path.home() / ".cache" / "wakeword_workbench" / "piper_models"
-
-_PIPER_HF_BASE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
+_PIPER_HF_REPO_ID = "rhasspy/piper-voices"
+_PIPER_HF_BASE_URL = f"https://huggingface.co/{_PIPER_HF_REPO_ID}/resolve/main"
 
 # Known high-quality English voices available from the Piper voices repository.
 # Each entry is a voice key that maps to a model at:
@@ -174,22 +169,14 @@ class PiperBackend(TTSBackend):
         Raises:
             TTSError: If download fails.
         """
-        model_path = _PIPER_MODEL_CACHE_DIR / f"{_DEFAULT_MODEL_NAME}.onnx"
-
-        if model_path.exists():
-            return model_path
-
-        # Ensure cache directory exists
-        _PIPER_MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
-        log.info("piper_downloading_default_model", dest=str(model_path))
         try:
-            urllib.request.urlretrieve(_DEFAULT_MODEL_URL, model_path)
-            return model_path
+            return cls._download_voice_model(_DEFAULT_MODEL_NAME)
         except Exception as e:
             raise TTSError(
                 f"Failed to download default Piper model. "
-                f"Please provide a model_path explicitly or download from: {_DEFAULT_MODEL_URL}"
+                f"Please provide a model_path explicitly or download the Piper voice "
+                f"'{_DEFAULT_MODEL_NAME}' from the Piper voice repository rooted at: "
+                f"{_PIPER_HF_BASE_URL}"
             ) from e
 
     def synthesize(self, text: str) -> TTSResult:
@@ -306,7 +293,7 @@ class PiperBackend(TTSBackend):
 
     @staticmethod
     def _download_voice_model(voice: str) -> Path:
-        """Download a Piper voice model from HuggingFace if not cached.
+        """Download a Piper voice model from Hugging Face if not cached.
 
         Args:
             voice: Voice key like ``en_US-lessac-high``.
@@ -317,14 +304,6 @@ class PiperBackend(TTSBackend):
         Raises:
             TTSError: If download fails.
         """
-        onnx_path = _PIPER_MODEL_CACHE_DIR / f"{voice}.onnx"
-        json_path = _PIPER_MODEL_CACHE_DIR / f"{voice}.onnx.json"
-
-        if onnx_path.exists() and json_path.exists():
-            return onnx_path
-
-        _PIPER_MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
         # Voice key format: en_US-lessac-high -> locale=en/en_US, name=lessac, quality=high
         parts = voice.split("-")
         if len(parts) < 3:
@@ -337,14 +316,35 @@ class PiperBackend(TTSBackend):
         quality = parts[2]
         lang = locale.split("_")[0]
 
-        for suffix, local_path in [(".onnx", onnx_path), (".onnx.json", json_path)]:
-            url = f"{_PIPER_HF_BASE_URL}/{lang}/{locale}/{name}/{quality}/{voice}{suffix}"
-            log.info("piper_downloading_model", url=url, dest=str(local_path))
-            try:
-                urllib.request.urlretrieve(url, local_path)
-            except Exception as e:
-                local_path.unlink(missing_ok=True)
-                raise TTSError(f"Failed to download Piper voice '{voice}' from {url}: {e}") from e
+        base_filename = f"{lang}/{locale}/{name}/{quality}/{voice}"
+        onnx_filename = f"{base_filename}.onnx"
+        json_filename = f"{base_filename}.onnx.json"
+
+        try:
+            hf_hub_download = import_module("huggingface_hub").hf_hub_download
+        except Exception as e:
+            raise TTSError(
+                "huggingface_hub is required to download Piper voice models. "
+                "Install the Piper extra for this project to enable default model downloads."
+            ) from e
+
+        try:
+            log.info("piper_downloading_model", repo=_PIPER_HF_REPO_ID, filename=onnx_filename)
+            onnx_path = Path(
+                hf_hub_download(
+                    repo_id=_PIPER_HF_REPO_ID,
+                    filename=onnx_filename,
+                    repo_type="model",
+                )
+            )
+            hf_hub_download(
+                repo_id=_PIPER_HF_REPO_ID,
+                filename=json_filename,
+                repo_type="model",
+            )
+        except Exception as e:
+            url = f"{_PIPER_HF_BASE_URL}/{onnx_filename}"
+            raise TTSError(f"Failed to download Piper voice '{voice}' from {url}: {e}") from e
 
         return onnx_path
 

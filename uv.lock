@@ -4106,9 +4106,11 @@ kokoro-openvino = [
     { name = "spacy" },
 ]
 piper = [
+    { name = "huggingface-hub" },
     { name = "piper-tts" },
 ]
 piper-cuda = [
+    { name = "huggingface-hub" },
     { name = "onnxruntime-gpu" },
     { name = "piper-tts" },
 ]
@@ -4117,6 +4119,7 @@ piper-cuda = [
 dev = [
     { name = "datasets" },
     { name = "en-core-web-sm" },
+    { name = "huggingface-hub" },
     { name = "matplotlib" },
     { name = "mmap-ninja" },
     { name = "mypy" },
@@ -4135,6 +4138,7 @@ dev = [
 ]
 tts = [
     { name = "en-core-web-sm" },
+    { name = "huggingface-hub" },
     { name = "piper-tts" },
     { name = "pykokoro" },
     { name = "spacy" },
@@ -4145,6 +4149,7 @@ tts-kokoro = [
     { name = "spacy" },
 ]
 tts-piper = [
+    { name = "huggingface-hub" },
     { name = "piper-tts" },
 ]
 
@@ -4154,6 +4159,8 @@ requires-dist = [
     { name = "en-core-web-sm", marker = "extra == 'kokoro'", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
     { name = "en-core-web-sm", marker = "extra == 'kokoro-cuda'", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
     { name = "en-core-web-sm", marker = "extra == 'kokoro-openvino'", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
+    { name = "huggingface-hub", marker = "extra == 'piper'", specifier = ">=0.30" },
+    { name = "huggingface-hub", marker = "extra == 'piper-cuda'", specifier = ">=0.30" },
     { name = "jellyfish", specifier = ">=1.0" },
     { name = "librosa", specifier = ">=0.10,<0.11" },
     { name = "numpy", specifier = ">=1.24,<2.0" },
@@ -4178,6 +4185,7 @@ provides-extras = ["kokoro", "piper", "kokoro-cuda", "kokoro-openvino", "piper-c
 dev = [
     { name = "datasets", specifier = ">=2.16" },
     { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
+    { name = "huggingface-hub", specifier = ">=0.30" },
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "mmap-ninja", specifier = ">=0.6" },
     { name = "mypy", specifier = ">=1.9" },
@@ -4196,6 +4204,7 @@ dev = [
 ]
 tts = [
     { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
+    { name = "huggingface-hub", specifier = ">=0.30" },
     { name = "piper-tts", specifier = ">=1.2" },
     { name = "pykokoro", specifier = ">=0.6" },
     { name = "spacy", specifier = ">=3.8" },
@@ -4205,7 +4214,10 @@ tts-kokoro = [
     { name = "pykokoro", specifier = ">=0.6" },
     { name = "spacy", specifier = ">=3.8" },
 ]
-tts-piper = [{ name = "piper-tts", specifier = ">=1.2" }]
+tts-piper = [
+    { name = "huggingface-hub", specifier = ">=0.30" },
+    { name = "piper-tts", specifier = ">=1.2" },
+]
 
 [[package]]
 name = "wasabi"

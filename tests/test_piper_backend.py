@@ -74,6 +74,46 @@ class TestPiperBackendInitialization:
             piper_module.PiperBackend(model_path=str(tmp_path / "nonexistent.onnx"))
         assert "model not found" in str(exc_info.value)
 
+    def test_default_model_download_reuses_voice_repository(self, tmp_path: Path) -> None:
+        """Default model download should use the same voice repository path as named voices."""
+        import wakeword_workbench.tts.piper_backend as piper_module
+
+        onnx_path = tmp_path / "en_US-lessac-medium.onnx"
+        onnx_path.touch()
+
+        mock_voice = MagicMock()
+        piper_module._PIPER_AVAILABLE = True
+        with patch.object(piper_module, "PiperVoice", mock_voice):
+            with patch.object(
+                piper_module.PiperBackend,
+                "_download_voice_model",
+                return_value=onnx_path,
+            ) as mock_download_voice:
+                backend = piper_module.PiperBackend(model_path=None)
+
+        mock_download_voice.assert_called_once_with("en_US-lessac-medium")
+        assert backend.model_path == onnx_path
+
+    def test_download_voice_model_uses_hugging_face_cache(self) -> None:
+        """Voice downloads should go through hf_hub_download and return the cached ONNX path."""
+        import wakeword_workbench.tts.piper_backend as piper_module
+
+        cached_onnx_path = "/tmp/hf-cache/en_US-lessac-medium.onnx"
+        mock_hf_module = MagicMock()
+        mock_hf_module.hf_hub_download.side_effect = [
+            cached_onnx_path,
+            "/tmp/hf-cache/en_US-lessac-medium.onnx.json",
+        ]
+
+        with patch.object(piper_module, "import_module", return_value=mock_hf_module):
+            result = piper_module.PiperBackend._download_voice_model("en_US-lessac-medium")
+
+        assert result == Path(cached_onnx_path)
+        assert mock_hf_module.hf_hub_download.call_count == 2
+        first_call = mock_hf_module.hf_hub_download.call_args_list[0]
+        assert first_call.kwargs["repo_id"] == "rhasspy/piper-voices"
+        assert first_call.kwargs["filename"] == "en/en_US/lessac/medium/en_US-lessac-medium.onnx"
+
 
 class TestPiperBackendSynthesize:
     """Tests for PiperBackend.synthesize()."""
@@ -171,15 +211,15 @@ class TestPiperBackendSetVoice:
         mock_voice = MagicMock()
         piper_module._PIPER_AVAILABLE = True
 
-        cache_dir = tmp_path / "piper_cache"
-        cache_dir.mkdir()
-        onnx_file = cache_dir / "en_US-lessac-high.onnx"
-        json_file = cache_dir / "en_US-lessac-high.onnx.json"
+        onnx_file = tmp_path / "en_US-lessac-high.onnx"
         onnx_file.touch()
-        json_file.touch()
 
         with patch.object(piper_module, "PiperVoice", mock_voice):
-            with patch.object(piper_module, "_PIPER_MODEL_CACHE_DIR", cache_dir):
+            with patch.object(
+                piper_module.PiperBackend,
+                "_download_voice_model",
+                return_value=onnx_file,
+            ):
                 backend = piper_module.PiperBackend(model_path=str(model_path))
                 backend.set_voice("en_US-lessac-high")
 
@@ -208,22 +248,18 @@ class TestPiperBackendSetVoice:
         model_path = tmp_path / "test_model.onnx"
         model_path.touch()
 
-        cache_dir = tmp_path / "piper_cache"
-        cache_dir.mkdir()
-
         mock_voice = MagicMock()
         piper_module._PIPER_AVAILABLE = True
         with patch.object(piper_module, "PiperVoice", mock_voice):
-            with patch.object(piper_module, "_PIPER_MODEL_CACHE_DIR", cache_dir):
-                with patch.object(
-                    piper_module.urllib.request,
-                    "urlretrieve",
-                    side_effect=OSError("network error"),
-                ):
-                    backend = piper_module.PiperBackend(model_path=str(model_path))
-                    with pytest.raises(TTSError) as exc_info:
-                        backend.set_voice("en_US-lessac-high")
-                    assert "Failed to download" in str(exc_info.value)
+            with patch.object(
+                piper_module.PiperBackend,
+                "_download_voice_model",
+                side_effect=TTSError("Failed to download Piper voice 'en_US-lessac-high'"),
+            ):
+                backend = piper_module.PiperBackend(model_path=str(model_path))
+                with pytest.raises(TTSError) as exc_info:
+                    backend.set_voice("en_US-lessac-high")
+                assert "Failed to download" in str(exc_info.value)
 
 
 class TestPiperBackendListVoices:

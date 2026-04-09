@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import urllib.request
+import wave
 from importlib import import_module
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, BinaryIO, ClassVar, Protocol, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, cast
 
 import numpy as np
 
+from wakeword_workbench.logging_config import get_logger
 from wakeword_workbench.tts.base import (
     BackendNotAvailableError,
     TTSBackend,
@@ -18,6 +20,8 @@ from wakeword_workbench.tts.base import (
 )
 
 from .cache import get_default_cache
+
+log = get_logger(__name__)
 
 # Try to import piper, but allow graceful fallback
 try:
@@ -38,9 +42,46 @@ _DEFAULT_MODEL_URL = (
 )
 _PIPER_MODEL_CACHE_DIR = Path.home() / ".cache" / "wakeword_workbench" / "piper_models"
 
+_PIPER_HF_BASE_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
+
+# Known high-quality English voices available from the Piper voices repository.
+# Each entry is a voice key that maps to a model at:
+#   {_PIPER_HF_BASE_URL}/en/en_US/{name}/{quality}/{voice_key}.onnx
+_KNOWN_VOICES: list[str] = [
+    "en_US-lessac-high",
+    "en_US-lessac-medium",
+    "en_US-lessac-low",
+    "en_US-ryan-high",
+    "en_US-ryan-medium",
+    "en_US-ryan-low",
+    "en_US-ljspeech-high",
+    "en_US-ljspeech-medium",
+    "en_US-libritts-high",
+    "en_US-libritts_r-medium",
+    "en_US-amy-medium",
+    "en_US-amy-low",
+    "en_US-arctic-medium",
+    "en_US-hfc_female-medium",
+    "en_US-hfc_male-medium",
+    "en_US-joe-medium",
+    "en_US-kusal-medium",
+    "en_US-kristin-medium",
+    "en_GB-alan-medium",
+    "en_GB-alan-low",
+    "en_GB-alba-medium",
+    "en_GB-aru-medium",
+    "en_GB-cori-medium",
+    "en_GB-cori-high",
+    "en_GB-jenny_dioco-medium",
+    "en_GB-northern_english_male-medium",
+    "en_GB-semaine-medium",
+    "en_GB-southern_english_female-low",
+    "en_GB-vctk-medium",
+]
+
 
 class _PiperVoiceLike(Protocol):
-    def synthesize_wav(self, text: str, wav_file: BinaryIO) -> None: ...
+    def synthesize_wav(self, text: str, wav_file: wave.Wave_write) -> None: ...
 
 
 class PiperBackend(TTSBackend):
@@ -120,7 +161,7 @@ class PiperBackend(TTSBackend):
         # Ensure cache directory exists
         _PIPER_MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-        print(f"Downloading Piper default model to {model_path}...")
+        log.info("piper_downloading_default_model", dest=str(model_path))
         try:
             urllib.request.urlretrieve(_DEFAULT_MODEL_URL, model_path)
             return model_path
@@ -157,9 +198,10 @@ class PiperBackend(TTSBackend):
             return cached_result
 
         try:
-            # Synthesize WAV audio
+            # Synthesize WAV audio via wave.open() writer
             wav_buffer = BytesIO()
-            self._voice.synthesize_wav(text, wav_buffer)
+            with wave.open(wav_buffer, "wb") as wav_file:
+                self._voice.synthesize_wav(text, wav_file)
             wav_buffer.seek(0)
 
             # Read the WAV data using soundfile
@@ -199,31 +241,77 @@ class PiperBackend(TTSBackend):
             raise TTSError(f"Piper synthesis failed: {e}") from e
 
     def set_voice(self, voice: str) -> None:
-        """Set the voice for synthesis.
-
-        Note:
-            Piper requires voice selection at model load time.
-            Changing the voice requires loading a different model file.
+        """Download (if needed) and load a different Piper voice model.
 
         Args:
-            voice: The voice identifier (ignored for Piper).
+            voice: Voice key like ``en_US-lessac-high``. Must be in
+                :data:`_KNOWN_VOICES`.
 
         Raises:
-            NotImplementedError: Always, since voice change requires model reload.
+            TTSError: If the voice is unknown or download/load fails.
         """
-        raise NotImplementedError(
-            "Piper does not support runtime voice changes. "
-            "Load a different model file to use a different voice."
-        )
+        if voice not in _KNOWN_VOICES:
+            raise TTSError(
+                f"Voice '{voice}' not available. "
+                f"Available: {', '.join(_KNOWN_VOICES[:5])}... ({len(_KNOWN_VOICES)} total)"
+            )
 
-    def list_voices(self) -> list[str]:
-        """List available voices for this backend.
+        model_path = self._download_voice_model(voice)
+        try:
+            piper_voice_class: Any = PiperVoice
+            self._voice = cast(_PiperVoiceLike, piper_voice_class.load(str(model_path)))
+            self.model_path = model_path
+            log.info("piper_voice_loaded", voice=voice, model_path=str(model_path))
+        except Exception as e:
+            raise TTSError(f"Failed to load Piper model for voice '{voice}': {e}") from e
+
+    @staticmethod
+    def _download_voice_model(voice: str) -> Path:
+        """Download a Piper voice model from HuggingFace if not cached.
+
+        Args:
+            voice: Voice key like ``en_US-lessac-high``.
 
         Returns:
-            Empty list. Piper voices are determined by model files.
-            Use the model directory to scan for available .onnx files.
+            Path to the local ``.onnx`` model file.
+
+        Raises:
+            TTSError: If download fails.
         """
-        return []
+        onnx_path = _PIPER_MODEL_CACHE_DIR / f"{voice}.onnx"
+        json_path = _PIPER_MODEL_CACHE_DIR / f"{voice}.onnx.json"
+
+        if onnx_path.exists() and json_path.exists():
+            return onnx_path
+
+        _PIPER_MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Voice key format: en_US-lessac-high -> locale=en/en_US, name=lessac, quality=high
+        parts = voice.split("-")
+        if len(parts) < 3:
+            raise TTSError(
+                f"Invalid voice key format '{voice}': expected <locale>-<name>-<quality>"
+            )
+
+        locale = parts[0]
+        name = parts[1]
+        quality = parts[2]
+        lang = locale.split("_")[0]
+
+        for suffix, local_path in [(".onnx", onnx_path), (".onnx.json", json_path)]:
+            url = f"{_PIPER_HF_BASE_URL}/{lang}/{locale}/{name}/{quality}/{voice}{suffix}"
+            log.info("piper_downloading_model", url=url, dest=str(local_path))
+            try:
+                urllib.request.urlretrieve(url, local_path)
+            except Exception as e:
+                local_path.unlink(missing_ok=True)
+                raise TTSError(f"Failed to download Piper voice '{voice}' from {url}: {e}") from e
+
+        return onnx_path
+
+    def list_voices(self) -> list[str]:
+        """Return known Piper English voice names."""
+        return _KNOWN_VOICES.copy()
 
     @staticmethod
     def list_voices_in_directory(directory: str | Path) -> list[str]:

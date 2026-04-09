@@ -90,6 +90,8 @@ class TestPiperBackendSynthesize:
         mock_piper_voice: MagicMock,
     ) -> None:
         """synthesize() should return a TTSResult with 16000 Hz audio."""
+        import wave
+
         import soundfile as sf
 
         import wakeword_workbench.tts.piper_backend as piper_module
@@ -97,13 +99,17 @@ class TestPiperBackendSynthesize:
         model_path = tmp_path / "test_model.onnx"
         model_path.touch()
 
-        # Create sample audio data (1 second at 22050 Hz)
         sample_audio = np.sin(np.linspace(0, 2 * np.pi, 22050)).astype(np.float32)
 
-        # Mock synthesize_wav (no-op since we're mocking sf.read)
-        mock_piper_voice.synthesize_wav = MagicMock()
+        def _write_wav(text: str, wav_file: wave.Wave_write) -> None:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            int16_data = (sample_audio * 32767).astype(np.int16)
+            wav_file.writeframes(int16_data.tobytes())
 
-        # Mock soundfile.read to return our sample audio
+        mock_piper_voice.load.return_value.synthesize_wav = MagicMock(side_effect=_write_wav)
+
         def mock_sf_read(file, dtype=None):
             return sample_audio, 22050
 
@@ -155,8 +161,33 @@ class TestPiperBackendSynthesize:
 class TestPiperBackendSetVoice:
     """Tests for PiperBackend.set_voice()."""
 
-    def test_set_voice_raises_not_implemented(self, tmp_path: Path) -> None:
-        """set_voice() should always raise NotImplementedError."""
+    def test_set_voice_loads_new_model(self, tmp_path: Path) -> None:
+        """set_voice() should download and load the requested voice model."""
+        import wakeword_workbench.tts.piper_backend as piper_module
+
+        model_path = tmp_path / "test_model.onnx"
+        model_path.touch()
+
+        mock_voice = MagicMock()
+        piper_module._PIPER_AVAILABLE = True
+
+        cache_dir = tmp_path / "piper_cache"
+        cache_dir.mkdir()
+        onnx_file = cache_dir / "en_US-lessac-high.onnx"
+        json_file = cache_dir / "en_US-lessac-high.onnx.json"
+        onnx_file.touch()
+        json_file.touch()
+
+        with patch.object(piper_module, "PiperVoice", mock_voice):
+            with patch.object(piper_module, "_PIPER_MODEL_CACHE_DIR", cache_dir):
+                backend = piper_module.PiperBackend(model_path=str(model_path))
+                backend.set_voice("en_US-lessac-high")
+
+        assert mock_voice.load.call_count == 2
+        assert backend.model_path == onnx_file
+
+    def test_set_voice_unknown_raises_error(self, tmp_path: Path) -> None:
+        """set_voice() should raise TTSError for unknown voices."""
         import wakeword_workbench.tts.piper_backend as piper_module
 
         model_path = tmp_path / "test_model.onnx"
@@ -166,16 +197,40 @@ class TestPiperBackendSetVoice:
         piper_module._PIPER_AVAILABLE = True
         with patch.object(piper_module, "PiperVoice", mock_voice):
             backend = piper_module.PiperBackend(model_path=str(model_path))
-            with pytest.raises(NotImplementedError) as exc_info:
-                backend.set_voice("any_voice")
-            assert "runtime voice changes" in str(exc_info.value)
+            with pytest.raises(TTSError) as exc_info:
+                backend.set_voice("nonexistent_voice")
+            assert "not available" in str(exc_info.value)
+
+    def test_set_voice_download_failure_raises_error(self, tmp_path: Path) -> None:
+        """set_voice() should raise TTSError when model download fails."""
+        import wakeword_workbench.tts.piper_backend as piper_module
+
+        model_path = tmp_path / "test_model.onnx"
+        model_path.touch()
+
+        cache_dir = tmp_path / "piper_cache"
+        cache_dir.mkdir()
+
+        mock_voice = MagicMock()
+        piper_module._PIPER_AVAILABLE = True
+        with patch.object(piper_module, "PiperVoice", mock_voice):
+            with patch.object(piper_module, "_PIPER_MODEL_CACHE_DIR", cache_dir):
+                with patch.object(
+                    piper_module.urllib.request,
+                    "urlretrieve",
+                    side_effect=OSError("network error"),
+                ):
+                    backend = piper_module.PiperBackend(model_path=str(model_path))
+                    with pytest.raises(TTSError) as exc_info:
+                        backend.set_voice("en_US-lessac-high")
+                    assert "Failed to download" in str(exc_info.value)
 
 
 class TestPiperBackendListVoices:
     """Tests for PiperBackend.list_voices()."""
 
-    def test_list_voices_returns_empty_list(self, tmp_path: Path) -> None:
-        """list_voices() should return empty list for Piper."""
+    def test_list_voices_returns_known_voices(self, tmp_path: Path) -> None:
+        """list_voices() should return known Piper voice names."""
         import wakeword_workbench.tts.piper_backend as piper_module
 
         model_path = tmp_path / "test_model.onnx"
@@ -185,7 +240,11 @@ class TestPiperBackendListVoices:
         piper_module._PIPER_AVAILABLE = True
         with patch.object(piper_module, "PiperVoice", mock_voice):
             backend = piper_module.PiperBackend(model_path=str(model_path))
-            assert backend.list_voices() == []
+            voices = backend.list_voices()
+            assert len(voices) > 0
+            assert "en_US-lessac-high" in voices
+            assert "en_US-ryan-high" in voices
+            assert voices == piper_module._KNOWN_VOICES
 
     def test_list_voices_in_directory_finds_models(self, tmp_path: Path) -> None:
         """list_voices_in_directory() should find .onnx model files."""
@@ -244,6 +303,8 @@ class TestPiperBackendTTSResultValidation:
         mock_piper_voice: MagicMock,
     ) -> None:
         """TTSResult audio should be normalized to [-1, 1]."""
+        import wave
+
         import soundfile as sf
 
         import wakeword_workbench.tts.piper_backend as piper_module
@@ -251,13 +312,17 @@ class TestPiperBackendTTSResultValidation:
         model_path = tmp_path / "test_model.onnx"
         model_path.touch()
 
-        # Create sample audio data that's already normalized
         sample_audio = np.sin(np.linspace(0, 2 * np.pi, 22050)).astype(np.float32)
 
-        # Mock synthesize_wav
-        mock_piper_voice.synthesize_wav = MagicMock()
+        def _write_wav(text: str, wav_file: wave.Wave_write) -> None:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            int16_data = (sample_audio * 32767).astype(np.int16)
+            wav_file.writeframes(int16_data.tobytes())
 
-        # Mock soundfile.read
+        mock_piper_voice.load.return_value.synthesize_wav = MagicMock(side_effect=_write_wav)
+
         def mock_sf_read(file, dtype=None):
             return sample_audio, 22050
 
@@ -277,6 +342,8 @@ class TestPiperBackendTTSResultValidation:
         mock_piper_voice: MagicMock,
     ) -> None:
         """TTSResult duration should match actual audio length."""
+        import wave
+
         import soundfile as sf
 
         import wakeword_workbench.tts.piper_backend as piper_module
@@ -284,13 +351,17 @@ class TestPiperBackendTTSResultValidation:
         model_path = tmp_path / "test_model.onnx"
         model_path.touch()
 
-        # Create sample audio data (0.5 seconds at 22050 Hz)
         sample_audio = np.sin(np.linspace(0, np.pi, 11025)).astype(np.float32)
 
-        # Mock synthesize_wav
-        mock_piper_voice.synthesize_wav = MagicMock()
+        def _write_wav(text: str, wav_file: wave.Wave_write) -> None:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            int16_data = (sample_audio * 32767).astype(np.int16)
+            wav_file.writeframes(int16_data.tobytes())
 
-        # Mock soundfile.read
+        mock_piper_voice.load.return_value.synthesize_wav = MagicMock(side_effect=_write_wav)
+
         def mock_sf_read(file, dtype=None):
             return sample_audio, 22050
 
@@ -327,6 +398,8 @@ class TestPiperBackendCaching:
         mock_cache: TTSCache,
     ) -> None:
         """Test that synthesize stores result in cache after synthesis."""
+        import wave
+
         import soundfile as sf
 
         import wakeword_workbench.tts.piper_backend as piper_module
@@ -335,7 +408,15 @@ class TestPiperBackendCaching:
         model_path.touch()
 
         sample_audio = np.sin(np.linspace(0, 2 * np.pi, 22050)).astype(np.float32)
-        mock_piper_voice.synthesize_wav = MagicMock()
+
+        def _write_wav(text: str, wav_file: wave.Wave_write) -> None:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            int16_data = (sample_audio * 32767).astype(np.int16)
+            wav_file.writeframes(int16_data.tobytes())
+
+        mock_piper_voice.load.return_value.synthesize_wav = MagicMock(side_effect=_write_wav)
 
         def mock_sf_read(file, dtype=None):
             return sample_audio, 22050

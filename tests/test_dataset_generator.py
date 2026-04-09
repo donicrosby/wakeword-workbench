@@ -11,6 +11,9 @@ import pytest
 from wakeword_workbench.config import (
     AugmentationConfig,
     Config,
+    NegativeConfusionConfig,
+    NegativeGenerationConfig,
+    NegativeSyntheticConfig,
     OutputConfig,
     SamplesConfig,
     TTSConfig,
@@ -249,12 +252,20 @@ class TestDatasetGeneratorInstantiation:
             path=overrides.get("output_path", "/tmp/test_output"),
             format=["microwakeword"],
         )
+        negatives = overrides.get(
+            "negatives",
+            NegativeGenerationConfig(
+                confusion=NegativeConfusionConfig(),
+                synthetic=NegativeSyntheticConfig(),
+            ),
+        )
         return Config(
             wake_word=overrides.get("wake_word", "hey_vera"),
             samples=samples,
             tts=tts,
             augmentation=augmentation,
             output=output,
+            negatives=negatives,
         )
 
     def test_instantiation_with_valid_config(self, sample_config: Config) -> None:
@@ -450,7 +461,15 @@ class TestDatasetGeneratorNegativePhrases:
         """_generate_synthetic_phrases should call generate_synthetic_negatives."""
         mock_synth.return_value = ["phrase1", "phrase2"]
         result = mock_generator._generate_synthetic_phrases(5)
-        mock_synth.assert_called_once_with(count=5, wake_word=mock_generator.config.wake_word)
+        mock_synth.assert_called_once_with(
+            count=5,
+            wake_word=mock_generator.config.wake_word,
+            word_list=None,
+            min_word_count=2,
+            max_word_count=4,
+            strategy="random",
+            topics=None,
+        )
         assert result == ["phrase1", "phrase2"]
 
     def test_generate_synthetic_phrases_returns_empty_for_zero(
@@ -460,6 +479,37 @@ class TestDatasetGeneratorNegativePhrases:
         result = mock_generator._generate_synthetic_phrases(0)
         assert result == []
 
+    @patch("wakeword_workbench.dataset.generator.generate_synthetic_negatives")
+    def test_generate_synthetic_phrases_uses_configurable_options(
+        self, mock_synth: MagicMock, sample_config: Config, tmp_dataset_dir: Path
+    ) -> None:
+        """_generate_synthetic_phrases should pass configured synthetic settings."""
+        mock_synth.return_value = ["phrase1"]
+        sample_config.negatives = NegativeGenerationConfig(
+            confusion=NegativeConfusionConfig(),
+            synthetic=NegativeSyntheticConfig(
+                strategy="topic",
+                min_word_count=3,
+                max_word_count=5,
+                topics=["technology"],
+                word_list=["alpha", "beta", "gamma"],
+            ),
+        )
+        generator = DatasetGenerator(sample_config, output_dir=tmp_dataset_dir)
+
+        result = generator._generate_synthetic_phrases(5)
+
+        mock_synth.assert_called_once_with(
+            count=5,
+            wake_word=generator.config.wake_word,
+            word_list=["alpha", "beta", "gamma"],
+            min_word_count=3,
+            max_word_count=5,
+            strategy="topic",
+            topics=["technology"],
+        )
+        assert result == ["phrase1"]
+
     @patch("wakeword_workbench.dataset.generator.generate_confusions")
     def test_generate_confusion_phrases_calls_generate_confusions(
         self, mock_confuse: MagicMock, mock_generator: DatasetGenerator
@@ -467,8 +517,33 @@ class TestDatasetGeneratorNegativePhrases:
         """_generate_confusion_phrases should call generate_confusions."""
         mock_confuse.return_value = ["confusion1", "confusion2"]
         result = mock_generator._generate_confusion_phrases(5)
-        mock_confuse.assert_called_once_with(mock_generator.config.wake_word, count=5)
+        mock_confuse.assert_called_once_with(
+            mock_generator.config.wake_word,
+            count=5,
+            min_similarity=0.6,
+        )
         assert result == ["confusion1", "confusion2"]
+
+    @patch("wakeword_workbench.dataset.generator.generate_confusions")
+    def test_generate_confusion_phrases_uses_configurable_min_similarity(
+        self, mock_confuse: MagicMock, sample_config: Config, tmp_dataset_dir: Path
+    ) -> None:
+        """_generate_confusion_phrases should pass configured similarity threshold."""
+        mock_confuse.return_value = ["confusion1"]
+        sample_config.negatives = NegativeGenerationConfig(
+            confusion=NegativeConfusionConfig(min_similarity=0.85),
+            synthetic=NegativeSyntheticConfig(),
+        )
+        generator = DatasetGenerator(sample_config, output_dir=tmp_dataset_dir)
+
+        result = generator._generate_confusion_phrases(4)
+
+        mock_confuse.assert_called_once_with(
+            generator.config.wake_word,
+            count=4,
+            min_similarity=0.85,
+        )
+        assert result == ["confusion1"]
 
     def test_generate_confusion_phrases_returns_empty_for_zero(
         self, mock_generator: DatasetGenerator
@@ -485,6 +560,79 @@ class TestDatasetGeneratorNegativePhrases:
         mock_confuse.side_effect = ImportError("jellyfish not installed")
         with pytest.raises(GeneratorError, match="Failed generating confusion phrases"):
             mock_generator._generate_confusion_phrases(5)
+
+    def test_calculate_negative_source_counts_uses_configured_weights(
+        self, sample_config: Config, tmp_dataset_dir: Path
+    ) -> None:
+        """Configured negative weights should control source allocation."""
+        sample_config.negatives = NegativeGenerationConfig(
+            confusion=NegativeConfusionConfig(enabled=True, weight=0.75),
+            synthetic=NegativeSyntheticConfig(enabled=True, weight=0.25),
+        )
+        generator = DatasetGenerator(sample_config, output_dir=tmp_dataset_dir)
+
+        counts = generator._calculate_negative_source_counts(20)
+
+        assert counts == {"confusion": 15, "synthetic": 5}
+
+    @patch.object(DatasetGenerator, "_generate_confusion_phrases")
+    @patch.object(DatasetGenerator, "_generate_synthetic_phrases")
+    def test_generate_negative_phrases_respects_enabled_sources(
+        self,
+        mock_synth: MagicMock,
+        mock_confuse: MagicMock,
+        sample_config: Config,
+        tmp_dataset_dir: Path,
+    ) -> None:
+        """Disabled negative sources should not be used."""
+        sample_config.negatives = NegativeGenerationConfig(
+            confusion=NegativeConfusionConfig(enabled=False, weight=0.0),
+            synthetic=NegativeSyntheticConfig(enabled=True, weight=1.0),
+        )
+        generator = DatasetGenerator(sample_config, output_dir=tmp_dataset_dir)
+        mock_synth.return_value = [f"phrase {i}" for i in range(6)]
+
+        result = generator._generate_negative_phrases(6)
+
+        mock_confuse.assert_not_called()
+        mock_synth.assert_called_once_with(6)
+        assert result == [f"phrase {i}" for i in range(6)]
+
+    @patch.object(DatasetGenerator, "_generate_confusion_phrases")
+    @patch.object(DatasetGenerator, "_generate_synthetic_phrases")
+    def test_generate_negative_phrases_prioritizes_custom_phrases(
+        self,
+        mock_synth: MagicMock,
+        mock_confuse: MagicMock,
+        sample_config: Config,
+        tmp_dataset_dir: Path,
+    ) -> None:
+        """Custom negative phrases should be included before generated ones."""
+        sample_config.negatives = NegativeGenerationConfig(
+            confusion=NegativeConfusionConfig(enabled=True, weight=0.5),
+            synthetic=NegativeSyntheticConfig(enabled=True, weight=0.5),
+            custom_phrases=["Archer", "assistant"],
+        )
+        generator = DatasetGenerator(sample_config, output_dir=tmp_dataset_dir)
+        mock_confuse.return_value = ["similar name", "assistant"]
+        mock_synth.return_value = ["weather update", "kitchen lights"]
+
+        result = generator._generate_negative_phrases(4)
+
+        assert result == ["Archer", "assistant", "similar name", "weather update"]
+
+    def test_get_custom_negative_phrases_applies_limit(
+        self, sample_config: Config, tmp_dataset_dir: Path
+    ) -> None:
+        """Custom negative phrases should preserve order and honor requested limits."""
+        sample_config.negatives = NegativeGenerationConfig(
+            confusion=NegativeConfusionConfig(),
+            synthetic=NegativeSyntheticConfig(),
+            custom_phrases=["Archer", "assistant", "weather"],
+        )
+        generator = DatasetGenerator(sample_config, output_dir=tmp_dataset_dir)
+
+        assert generator._get_custom_negative_phrases(limit=2) == ["Archer", "assistant"]
 
 
 class TestDatasetGeneratorVoiceSelection:

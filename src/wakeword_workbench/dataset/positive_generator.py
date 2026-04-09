@@ -201,7 +201,7 @@ class PositiveGenerator:
                         # Add to manifest
                         manifest_entries.append(
                             {
-                                "path": str(file_path),
+                                "path": filename,
                                 "label": 1,
                                 "text": phrase,
                                 "voice": voice,

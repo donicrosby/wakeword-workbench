@@ -127,6 +127,29 @@ class TestCacheKeyGeneration:
         # Results may differ but both should be retrievable
         assert c1.audio.shape == c2.audio.shape or c1.audio.shape == r1.audio.shape
 
+    def test_key_includes_runtime_options(self, tmp_path: Path) -> None:
+        """Cache key must incorporate runtime options like acceleration and device."""
+        cache = TTSCache(cache_dir=tmp_path / "tts_cache")
+        result = make_result()
+
+        cache.put(
+            "hello",
+            "af_sarah",
+            "kokoro",
+            result,
+            options={"acceleration": "cpu"},
+        )
+
+        assert (
+            cache.get(
+                "hello",
+                "af_sarah",
+                "kokoro",
+                options={"acceleration": "cuda"},
+            )
+            is None
+        )
+
     def test_key_is_sha256_hex(self, tmp_path: Path) -> None:
         """Key generated via _make_key should be a 64-char hex string."""
         cache = TTSCache(cache_dir=tmp_path / "tts_cache")
@@ -148,7 +171,7 @@ class TestCacheKeyGeneration:
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
 
-        assert meta["cache_key_version"] == "v2"
+        assert meta["cache_key_version"] == "v3"
 
 
 # ---------------------------------------------------------------------------

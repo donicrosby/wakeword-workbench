@@ -9,7 +9,7 @@ Run this sequence before using any workflow in this repo:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
-uv run pre-commit install
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -19,9 +19,16 @@ If your config uses Kokoro or Piper and validation fails, install the missing ba
 ```bash
 uv sync --extra kokoro
 uv sync --extra piper
+
+# accelerator-aware variants
+uv sync --extra kokoro-cuda
+uv sync --extra kokoro-openvino
+uv sync --extra piper-cuda
 ```
 
 Agent-specific conventions and anti-drift rules live in [AGENTS.md](AGENTS.md).
+
+Commits are enforced with conventional commit messages, and pre-commit now runs `mypy` in addition to Ruff and file hygiene checks.
 
 ## Quick Links
 
@@ -90,8 +97,17 @@ For TTS support:
 # Kokoro TTS backend
 uv sync --extra kokoro
 
+# Kokoro with CUDA
+uv sync --extra kokoro-cuda
+
+# Kokoro with OpenVINO
+uv sync --extra kokoro-openvino
+
 # Piper TTS backend
 uv sync --extra piper
+
+# Piper with CUDA
+uv sync --extra piper-cuda
 
 # All TTS backends
 uv sync --all-extras
@@ -161,6 +177,13 @@ tts:
         - "af_sarah"
         - "am_adam"
       speed: 1.0
+      acceleration: "cuda"  # cpu, cuda, or openvino
+
+    - backend: "piper"
+      voices:
+        - "en_US-amy-low"
+      acceleration: "cuda"  # Piper supports cpu/cuda
+      model_path: "./models/en_US-amy-low.onnx"  # optional
 
 augmentation:
   noise_snr: [-10, 10]      # dB range for noise injection
@@ -258,6 +281,7 @@ wakeword-workbench/
 | `tts.providers` | list | Non-empty list of TTS provider configs |
 | `tts.providers[].backend` | string | TTS engine: `"kokoro"` or `"piper"` |
 | `tts.providers[].voices` | list | Non-empty list of voice identifiers |
+| `tts.providers[].acceleration` | string | Runtime acceleration: `cpu`, `cuda`, or `openvino` |
 | `augmentation.noise_snr` | [float, float] | SNR range for noise injection (dB) |
 | `augmentation.reverb_probability` | float | Probability of reverb (0.0-1.0) |
 | `augmentation.gain_range` | [float, float] | Gain range (dB) |
@@ -270,6 +294,9 @@ wakeword-workbench/
 |-------|------|---------|-------------|
 | `wake_word_variants` | list[string] | — | Explicit positive phrases to synthesize; if omitted, only `wake_word` is used |
 | `tts.providers[].speed` | float | 1.0 | Speech speed multiplier (0.0-3.0) |
+| `tts.providers[].acceleration` | string | `cpu` | Runtime acceleration mode |
+| `tts.providers[].device` | string | — | Optional device selector such as `GPU` or `cuda:0` |
+| `tts.providers[].model_path` | string | — | Optional explicit model path for compatible backends |
 | `negatives.confusion.enabled` | bool | true | Enable phonetic confusion negatives |
 | `negatives.custom_phrases` | list[string] | — | Explicit negative phrases to always include first |
 | `negatives.confusion.weight` | float | 0.6 | Relative share of generated negatives |
@@ -371,6 +398,11 @@ log.info("processing", count=100, file=str(path))
 uv sync --extra kokoro
 # or
 uv sync --extra piper
+
+# accelerator-aware variants
+uv sync --extra kokoro-cuda
+uv sync --extra kokoro-openvino
+uv sync --extra piper-cuda
 ```
 
 ### Config Validation Failed

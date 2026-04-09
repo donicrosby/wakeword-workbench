@@ -365,11 +365,23 @@ def generate_variants(
     all_variants_list = list(all_variants_set)
     rng.shuffle(all_variants_list)
 
-    # Take the requested count, ensuring original is always included
+    # Take the requested count, ensuring the original and representative
+    # variation categories are included when available.
     result: list[str] = []
-    if normalized in all_variants_set:
-        result.append(normalized)
-        all_variants_set.discard(normalized)
+
+    preferred_variants: list[str] = []
+    for candidate in [
+        normalized,
+        normalized.upper(),
+        normalized.title(),
+        f"{normalized}!",
+    ]:
+        if candidate in all_variants_set and candidate not in preferred_variants:
+            preferred_variants.append(candidate)
+
+    for candidate in preferred_variants[:count]:
+        result.append(candidate)
+        all_variants_set.discard(candidate)
 
     # Add remaining variants
     remaining = list(all_variants_set)

@@ -9,6 +9,7 @@ from pathlib import Path
 yaml = import_module("yaml")
 
 SUPPORTED_OUTPUT_FORMATS = {"microwakeword", "openwakeword"}
+SUPPORTED_TTS_ACCELERATION = {"cpu", "cuda", "openvino"}
 
 
 class ConfigError(Exception):
@@ -38,6 +39,9 @@ class TTSProviderConfig:
     backend: str
     voices: list[str]
     speed: float = 1.0
+    acceleration: str = "cpu"
+    device: str | None = None
+    model_path: str | None = None
 
     def __post_init__(self) -> None:
         if not self.backend:
@@ -46,6 +50,49 @@ class TTSProviderConfig:
             raise ConfigError("voices cannot be empty")
         if not 0 < self.speed <= 3:
             raise ConfigError("speed must be between 0 and 3")
+
+        self.acceleration = self.acceleration.strip().lower()
+        if self.acceleration == "migraphx":
+            raise ConfigError("MIGraphX acceleration is not supported for TTS providers")
+        if self.acceleration not in SUPPORTED_TTS_ACCELERATION:
+            supported = ", ".join(sorted(SUPPORTED_TTS_ACCELERATION))
+            raise ConfigError(
+                f"acceleration must be one of: {supported}; got {self.acceleration!r}"
+            )
+
+        if self.device is not None:
+            self.device = self.device.strip()
+            if not self.device:
+                raise ConfigError("device cannot be empty when provided")
+
+        if self.model_path is not None:
+            self.model_path = self.model_path.strip()
+            if not self.model_path:
+                raise ConfigError("model_path cannot be empty when provided")
+
+        backend_name = self.backend.strip().lower()
+        if backend_name == "piper" and self.acceleration == "openvino":
+            raise ConfigError("Piper supports CPU and CUDA acceleration, but not OpenVINO")
+
+    def runtime_options(self) -> dict[str, str]:
+        """Return normalized runtime options for backend creation and caching."""
+        options = {"acceleration": self.acceleration}
+        if self.device is not None:
+            options["device"] = self.device
+        if self.model_path is not None:
+            options["model_path"] = self.model_path
+        return options
+
+    def backend_cache_key(self) -> tuple[str, tuple[str, ...], float, str, str | None, str | None]:
+        """Return a stable cache key for backend instance reuse."""
+        return (
+            self.backend,
+            tuple(self.voices),
+            self.speed,
+            self.acceleration,
+            self.device,
+            self.model_path,
+        )
 
 
 @dataclass
@@ -279,6 +326,9 @@ def load_config(path: str | Path) -> Config:
             backend=provider_data["backend"],
             voices=provider_data["voices"],
             speed=provider_data.get("speed", 1.0),
+            acceleration=provider_data.get("acceleration", "cpu"),
+            device=provider_data.get("device"),
+            model_path=provider_data.get("model_path"),
         )
         providers.append(provider)
 

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import inspect
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from importlib import import_module
 from typing import Any, ClassVar, Protocol, cast
 
@@ -91,8 +95,15 @@ class KokoroBackend(TTSBackend):
     """
 
     _pipeline: ClassVar[_KokoroPipelineLike | None] = None
+    _pipelines: ClassVar[dict[tuple[str, str | None], _KokoroPipelineLike]] = {}
 
-    def __init__(self, voice: str = "af_sarah", speed: float = 1.0) -> None:
+    def __init__(
+        self,
+        voice: str = "af_sarah",
+        speed: float = 1.0,
+        acceleration: str = "cpu",
+        device: str | None = None,
+    ) -> None:
         if not _PYKOKORO_AVAILABLE:
             raise BackendNotAvailableError(
                 "pykokoro is not installed. Install it with: uv sync --extra kokoro"
@@ -101,24 +112,91 @@ class KokoroBackend(TTSBackend):
         if speed <= 0:
             raise TTSError(f"speed must be positive, got {speed}")
 
+        normalized_acceleration = acceleration.strip().lower()
+        if normalized_acceleration == "migraphx":
+            raise TTSError("MIGraphX is not supported for Kokoro inference")
+        if normalized_acceleration not in {"cpu", "cuda", "openvino"}:
+            raise TTSError(
+                "Kokoro acceleration must be one of: cpu, cuda, openvino; "
+                f"got {normalized_acceleration!r}"
+            )
+
         self._voice = voice
         self._speed = speed
+        self._acceleration = normalized_acceleration
+        self._device = device
 
         # Initialize pipeline lazily to avoid loading models at import time
-        if KokoroBackend._pipeline is None:
-            try:
-                pipeline_cls: Any = KokoroPipeline
-                pipeline_config_cls: Any = PipelineConfig
-                KokoroBackend._pipeline = cast(
-                    _KokoroPipelineLike, pipeline_cls(pipeline_config_cls())
+        pipeline_key = (self._acceleration, self._device)
+        try:
+            if pipeline_key == ("cpu", None):
+                if KokoroBackend._pipeline is None:
+                    KokoroBackend._pipeline = self._build_pipeline(
+                        acceleration=self._acceleration,
+                        device=self._device,
+                    )
+            elif pipeline_key not in KokoroBackend._pipelines:
+                KokoroBackend._pipelines[pipeline_key] = self._build_pipeline(
+                    acceleration=self._acceleration,
+                    device=self._device,
                 )
-            except Exception as e:
-                raise TTSError(f"Failed to initialize Kokoro pipeline: {e}") from e
+        except Exception as e:
+            raise TTSError(f"Failed to initialize Kokoro pipeline: {e}") from e
 
         # Validate voice is available
         if voice not in self.list_voices():
             available = ", ".join(self.list_voices())
             raise TTSError(f"Voice '{voice}' not available. Available: {available}")
+
+    @staticmethod
+    @contextmanager
+    def _temporary_provider_env(provider_name: str | None) -> Iterator[None]:
+        previous = os.environ.get("ONNX_PROVIDER")
+        try:
+            if provider_name is None:
+                os.environ.pop("ONNX_PROVIDER", None)
+            else:
+                os.environ["ONNX_PROVIDER"] = provider_name
+            yield
+        finally:
+            if previous is None:
+                os.environ.pop("ONNX_PROVIDER", None)
+            else:
+                os.environ["ONNX_PROVIDER"] = previous
+
+    @classmethod
+    def _provider_name(cls, acceleration: str) -> str | None:
+        if acceleration == "cpu":
+            return None
+        if acceleration == "cuda":
+            return "CUDAExecutionProvider"
+        if acceleration == "openvino":
+            return "OpenVINOExecutionProvider"
+        raise TTSError(f"Unsupported Kokoro acceleration: {acceleration}")
+
+    @classmethod
+    def _build_pipeline(cls, acceleration: str, device: str | None) -> _KokoroPipelineLike:
+        pipeline_cls: Any = KokoroPipeline
+        pipeline_config_cls: Any = PipelineConfig
+        provider_name = cls._provider_name(acceleration)
+
+        config_kwargs: dict[str, Any] = {}
+        config_signature = inspect.signature(pipeline_config_cls)
+        if provider_name is not None:
+            if "provider" in config_signature.parameters:
+                config_kwargs["provider"] = provider_name
+            elif "providers" in config_signature.parameters:
+                config_kwargs["providers"] = [provider_name]
+
+        if device is not None:
+            if "device" in config_signature.parameters:
+                config_kwargs["device"] = device
+            elif "device_type" in config_signature.parameters:
+                config_kwargs["device_type"] = device
+
+        with cls._temporary_provider_env(provider_name):
+            pipeline_config = pipeline_config_cls(**config_kwargs)
+            return cast(_KokoroPipelineLike, pipeline_cls(pipeline_config))
 
     @classmethod
     def is_available(cls) -> bool:
@@ -146,11 +224,23 @@ class KokoroBackend(TTSBackend):
 
         # Check cache first
         cache = get_default_cache()
-        cached_result = cache.get(text, self._voice, "kokoro", self._speed)
+        cached_result = cache.get(
+            text,
+            self._voice,
+            "kokoro",
+            self._speed,
+            options={
+                "acceleration": self._acceleration,
+                "device": self._device or "",
+            },
+        )
         if cached_result is not None:
             return cached_result
 
-        pipeline = self._pipeline
+        pipeline_key = (self._acceleration, self._device)
+        pipeline = (
+            self._pipeline if pipeline_key == ("cpu", None) else self._pipelines.get(pipeline_key)
+        )
         if pipeline is None:
             raise TTSError("Kokoro pipeline not initialized")
 
@@ -200,7 +290,17 @@ class KokoroBackend(TTSBackend):
             )
 
             # Store in cache
-            cache.put(text, self._voice, "kokoro", result, self._speed)
+            cache.put(
+                text,
+                self._voice,
+                "kokoro",
+                result,
+                self._speed,
+                options={
+                    "acceleration": self._acceleration,
+                    "device": self._device or "",
+                },
+            )
 
             return result
 

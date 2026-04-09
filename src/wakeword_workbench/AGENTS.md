@@ -13,12 +13,12 @@ Before touching this module, bootstrap and smoke-check from repo root:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
-uv run pre-commit install
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
 
-If the selected config backend is unavailable, install the matching extra (`kokoro` or `piper`) and re-run validation.
+If the selected config backend is unavailable, install the matching extra (`kokoro`, `kokoro-cuda`, `kokoro-openvino`, `piper`, or `piper-cuda`) and re-run validation.
 
 ## STRUCTURE
 

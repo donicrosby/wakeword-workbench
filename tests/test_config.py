@@ -32,6 +32,7 @@ tts:
       voices:
         - af_sarah
       speed: 1.0
+      acceleration: cuda
 augmentation:
   noise_snr: [-10, 10]
   reverb_probability: 0.5
@@ -72,6 +73,8 @@ tts:
       voices:
         - en_US-amy-low
       speed: 1.2
+      acceleration: cuda
+      model_path: /models/en_US-amy-low.onnx
 augmentation:
   noise_snr: [-10, 10]
   reverb_probability: 0.5
@@ -96,6 +99,9 @@ def test_load_config_valid_minimal(tmp_path: Path) -> None:
     assert config.tts.providers[0].backend == "kokoro"
     assert config.tts.providers[0].voices == ["af_sarah"]
     assert config.tts.providers[0].speed == 1.0
+    assert config.tts.providers[0].acceleration == "cuda"
+    assert config.tts.providers[0].device is None
+    assert config.tts.providers[0].model_path is None
     assert config.augmentation.noise_snr == [-10, 10]
     assert config.augmentation.reverb_probability == 0.5
     assert config.augmentation.gain_range == [-45, 0]
@@ -125,9 +131,12 @@ def test_load_config_valid_full(tmp_path: Path) -> None:
     assert config.tts.providers[0].backend == "kokoro"
     assert config.tts.providers[0].voices == ["af_sarah", "af_nicole"]
     assert config.tts.providers[0].speed == 1.0
+    assert config.tts.providers[0].acceleration == "cpu"
     assert config.tts.providers[1].backend == "piper"
     assert config.tts.providers[1].voices == ["en_US-amy-low"]
     assert config.tts.providers[1].speed == 1.2
+    assert config.tts.providers[1].acceleration == "cuda"
+    assert config.tts.providers[1].model_path == "/models/en_US-amy-low.onnx"
     assert config.output.format == ["microwakeword", "openwakeword"]
     assert config.negatives.confusion.weight == 0.75
     assert config.negatives.confusion.min_similarity == 0.8
@@ -147,6 +156,36 @@ def test_load_config_string_path(tmp_path: Path) -> None:
     config = load_config(str(config_file))
 
     assert config.wake_word == "hey assistant"
+
+
+def test_load_config_with_openvino_device(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        dedent("""
+wake_word: "hey assistant"
+samples:
+  positives: 1000
+  negatives_multiplier: 5
+tts:
+  providers:
+    - backend: kokoro
+      voices: [af_sarah]
+      acceleration: openvino
+      device: GPU
+augmentation:
+  noise_snr: [-10, 10]
+  reverb_probability: 0.5
+  gain_range: [-45, 0]
+output:
+  path: ./datasets
+  format: [microwakeword]
+""")
+    )
+
+    config = load_config(config_file)
+
+    assert config.tts.providers[0].acceleration == "openvino"
+    assert config.tts.providers[0].device == "GPU"
 
 
 # --- File Not Found / Readable Tests ---
@@ -170,6 +209,60 @@ def test_load_config_invalid_yaml(tmp_path: Path) -> None:
     config_file.write_text("invalid: yaml: content:")
 
     with pytest.raises(ConfigError, match="Failed to parse YAML"):
+        load_config(config_file)
+
+
+def test_load_config_rejects_migraphx_acceleration(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        dedent("""
+wake_word: "hey assistant"
+samples:
+  positives: 1000
+  negatives_multiplier: 5
+tts:
+  providers:
+    - backend: kokoro
+      voices: [af_sarah]
+      acceleration: migraphx
+augmentation:
+  noise_snr: [-10, 10]
+  reverb_probability: 0.5
+  gain_range: [-45, 0]
+output:
+  path: ./datasets
+  format: [microwakeword]
+""")
+    )
+
+    with pytest.raises(ConfigError, match="MIGraphX acceleration is not supported"):
+        load_config(config_file)
+
+
+def test_load_config_rejects_piper_openvino(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        dedent("""
+wake_word: "hey assistant"
+samples:
+  positives: 1000
+  negatives_multiplier: 5
+tts:
+  providers:
+    - backend: piper
+      voices: [en_US-amy-low]
+      acceleration: openvino
+augmentation:
+  noise_snr: [-10, 10]
+  reverb_probability: 0.5
+  gain_range: [-45, 0]
+output:
+  path: ./datasets
+  format: [microwakeword]
+""")
+    )
+
+    with pytest.raises(ConfigError, match="Piper supports CPU and CUDA acceleration"):
         load_config(config_file)
 
 

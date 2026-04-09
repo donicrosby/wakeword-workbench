@@ -27,6 +27,7 @@ tts:
         - "af_sarah"
         - "am_adam"
       speed: 1.0
+      acceleration: "cuda"
 
 augmentation:
   noise_snr: [-10, 10]

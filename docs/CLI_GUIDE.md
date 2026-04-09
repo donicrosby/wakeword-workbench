@@ -14,7 +14,7 @@ uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
 
-If backend resolution fails, install `uv sync --extra kokoro` or `uv sync --extra piper`.
+If backend resolution fails, install `uv sync --extra kokoro`, `uv sync --extra kokoro-cuda`, `uv sync --extra kokoro-openvino`, `uv sync --extra piper`, or `uv sync --extra piper-cuda`.
 
 ## Table of Contents
 
@@ -138,7 +138,7 @@ uv run wakeword-workbench run /path/to/config.yaml
 |-------|-------|----------|
 | `Config file not found` | `CONFIG_PATH` does not exist | Verify file path |
 | `Config validation failed` | Missing or invalid fields | Run `validate` command first |
-| `TTS backend not available` | Backend not installed | Install with `uv sync --extra kokoro` or `uv sync --extra piper` |
+| `TTS backend not available` | Backend not installed | Install with the matching extra: `kokoro`, `kokoro-cuda`, `kokoro-openvino`, `piper`, or `piper-cuda` |
 
 **What It Does:**
 

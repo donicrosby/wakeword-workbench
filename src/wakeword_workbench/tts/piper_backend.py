@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 # Default Piper model configuration
 _DEFAULT_MODEL_NAME = "en_US-lessac-medium"
 _DEFAULT_MODEL_URL = (
-    f"https://github.com/rhasspy/piper/releases/download/2024.11.14-2/{_DEFAULT_MODEL_NAME}.onnx"
+    f"https://github.com/OHF-Voice/piper1-gpl/releases/download/v1.4.2/{_DEFAULT_MODEL_NAME}.onnx"
 )
 _PIPER_MODEL_CACHE_DIR = Path.home() / ".cache" / "wakeword_workbench" / "piper_models"
 
@@ -105,13 +105,21 @@ class PiperBackend(TTSBackend):
     _TARGET_SAMPLE_RATE: ClassVar[int] = 16000
     """Target sample rate for wake word models."""
 
-    def __init__(self, model_path: str | None = None, use_cuda: bool = False) -> None:
+    def __init__(
+        self,
+        model_path: str | None = None,
+        use_cuda: bool = False,
+        acceleration: str = "cpu",
+        device: str | None = None,
+    ) -> None:
         """Initialize the Piper backend.
 
         Args:
             model_path: Path to the Piper ONNX model file (.onnx).
                 If None, downloads the default model automatically.
-            use_cuda: Whether to use CUDA for inference (default False).
+            use_cuda: Backward-compatible CUDA toggle.
+            acceleration: Runtime acceleration mode ("cpu" or "cuda").
+            device: Optional device selector for future runtime-specific routing.
 
         Raises:
             BackendNotAvailableError: If piper is not installed.
@@ -122,7 +130,17 @@ class PiperBackend(TTSBackend):
                 "Piper TTS is not available. Install it with: pip install piper-tts"
             )
 
-        self.use_cuda = use_cuda
+        normalized_acceleration = acceleration.strip().lower()
+        if normalized_acceleration == "migraphx":
+            raise TTSError("MIGraphX is not supported for Piper inference")
+        if normalized_acceleration not in {"cpu", "cuda"}:
+            raise TTSError(
+                f"Piper supports only cpu or cuda acceleration; got {normalized_acceleration!r}"
+            )
+
+        self.acceleration = "cuda" if use_cuda else normalized_acceleration
+        self.use_cuda = self.acceleration == "cuda"
+        self.device = device
         self._voice: _PiperVoiceLike | None = None
 
         # Resolve model_path: use provided path or download default
@@ -139,7 +157,10 @@ class PiperBackend(TTSBackend):
         try:
             # Load the Piper voice model
             piper_voice_class: Any = PiperVoice
-            self._voice = cast(_PiperVoiceLike, piper_voice_class.load(str(self.model_path)))
+            self._voice = cast(
+                _PiperVoiceLike,
+                piper_voice_class.load(str(self.model_path), use_cuda=self.use_cuda),
+            )
         except Exception as e:
             raise TTSError(f"Failed to load Piper model: {e}") from e
 
@@ -192,7 +213,14 @@ class PiperBackend(TTSBackend):
         # Check cache first
         cache = get_default_cache()
         cached_result = cache.get(
-            text, self.model_path.stem if self.model_path else "default", "piper", 1.0
+            text,
+            self.model_path.stem if self.model_path else "default",
+            "piper",
+            1.0,
+            options={
+                "acceleration": self.acceleration,
+                "model_path": str(self.model_path),
+            },
         )
         if cached_result is not None:
             return cached_result
@@ -232,7 +260,15 @@ class PiperBackend(TTSBackend):
 
             # Store in cache
             cache.put(
-                text, self.model_path.stem if self.model_path else "default", "piper", result, 1.0
+                text,
+                self.model_path.stem if self.model_path else "default",
+                "piper",
+                result,
+                1.0,
+                options={
+                    "acceleration": self.acceleration,
+                    "model_path": str(self.model_path),
+                },
             )
 
             return result
@@ -259,7 +295,10 @@ class PiperBackend(TTSBackend):
         model_path = self._download_voice_model(voice)
         try:
             piper_voice_class: Any = PiperVoice
-            self._voice = cast(_PiperVoiceLike, piper_voice_class.load(str(model_path)))
+            self._voice = cast(
+                _PiperVoiceLike,
+                piper_voice_class.load(str(model_path), use_cuda=self.use_cuda),
+            )
             self.model_path = model_path
             log.info("piper_voice_loaded", voice=voice, model_path=str(model_path))
         except Exception as e:

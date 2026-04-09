@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "wakeword_workbench" / "tts"
 DEFAULT_MAX_SIZE_MB = 1000
-_CACHE_KEY_VERSION = "v2"
+_CACHE_KEY_VERSION = "v3"
 
 
 class TTSCache:
@@ -61,7 +61,14 @@ class TTSCache:
     # Public API
     # -------------------------------------------------------------------------
 
-    def get(self, text: str, voice: str, backend: str, speed: float = 1.0) -> TTSResult | None:
+    def get(
+        self,
+        text: str,
+        voice: str,
+        backend: str,
+        speed: float = 1.0,
+        options: dict[str, str] | None = None,
+    ) -> TTSResult | None:
         """Retrieve a cached TTS result.
 
         Args:
@@ -74,7 +81,7 @@ class TTSCache:
             TTSResult if found in cache, None otherwise.
             Updates LRU order on cache hit.
         """
-        key = self._make_key(text, voice, backend, speed)
+        key = self._make_key(text, voice, backend, speed, options)
         audio_path = self._audio_path(key)
         meta_path = self._meta_path(key)
 
@@ -106,6 +113,7 @@ class TTSCache:
         backend: str,
         result: TTSResult,
         speed: float = 1.0,
+        options: dict[str, str] | None = None,
     ) -> None:
         """Store a TTS result in the cache.
 
@@ -117,7 +125,7 @@ class TTSCache:
             speed: Synthesis speed (default 1.0).
         """
         self._cache_dir.mkdir(parents=True, exist_ok=True)
-        key = self._make_key(text, voice, backend, speed)
+        key = self._make_key(text, voice, backend, speed, options)
         audio_path = self._audio_path(key)
         meta_path = self._meta_path(key)
 
@@ -129,6 +137,7 @@ class TTSCache:
             "voice": voice,
             "backend": backend,
             "speed": speed,
+            "options": options or {},
             "cache_key_version": _CACHE_KEY_VERSION,
             "cached_at": time.time(),
         }
@@ -201,6 +210,7 @@ class TTSCache:
         voice: str,
         backend: str,
         speed: float = 1.0,
+        options: dict[str, str] | None = None,
     ) -> str:
         """Generate a SHA256 cache key from synthesis parameters.
 
@@ -215,7 +225,11 @@ class TTSCache:
         """
         import hashlib
 
-        data = f"{_CACHE_KEY_VERSION}\x00{text}\x00{voice}\x00{backend}\x00{speed}"
+        normalized_options = json.dumps(options or {}, sort_keys=True, separators=(",", ":"))
+        data = (
+            f"{_CACHE_KEY_VERSION}\x00{text}\x00{voice}\x00{backend}\x00{speed}"
+            f"\x00{normalized_options}"
+        )
         return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
     # -------------------------------------------------------------------------

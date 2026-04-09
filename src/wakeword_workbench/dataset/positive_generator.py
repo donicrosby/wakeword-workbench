@@ -25,12 +25,11 @@ class PositiveGeneratorError(Exception):
     pass
 
 
-def _create_backend_with_speed(backend_name: str, speed: float) -> TTSBackend:
-    """Create a TTS backend, passing speed when supported.
+def _create_backend_for_provider(provider: TTSProviderConfig) -> TTSBackend:
+    """Create a TTS backend for a provider, forwarding supported runtime options.
 
     Args:
-        backend_name: Registered backend name.
-        speed: Requested synthesis speed for the provider.
+        provider: Provider configuration with backend/runtime settings.
 
     Returns:
         Instantiated TTS backend.
@@ -39,19 +38,42 @@ def _create_backend_with_speed(backend_name: str, speed: float) -> TTSBackend:
         TTSError: If the backend is unknown or cannot be instantiated.
     """
     list_available_backends()
+    backend_name = provider.backend
     backend_cls = _BACKENDS.get(backend_name)
     if backend_cls is None:
         available = ", ".join(sorted(_BACKENDS)) or "none"
         raise TTSError(f"Unknown TTS backend: '{backend_name}'. Available backends: {available}")
 
     signature = inspect.signature(backend_cls.__init__)
-    if "speed" in signature.parameters:
-        backend_factory: Any = backend_cls
-        return cast(TTSBackend, backend_factory(speed=speed))
+    kwargs: dict[str, Any] = {}
 
-    if speed != 1.0:
-        log.warning("backend_no_speed_support", backend=backend_name, speed=speed)
-    return backend_cls()
+    if "speed" in signature.parameters:
+        kwargs["speed"] = provider.speed
+    elif provider.speed != 1.0:
+        log.warning("backend_no_speed_support", backend=backend_name, speed=provider.speed)
+
+    if "acceleration" in signature.parameters:
+        kwargs["acceleration"] = provider.acceleration
+    elif provider.acceleration != "cpu" and "use_cuda" not in signature.parameters:
+        log.warning(
+            "backend_no_acceleration_support",
+            backend=backend_name,
+            acceleration=provider.acceleration,
+        )
+
+    if "use_cuda" in signature.parameters:
+        kwargs["use_cuda"] = provider.acceleration == "cuda"
+
+    if "device" in signature.parameters and provider.device is not None:
+        kwargs["device"] = provider.device
+    elif provider.device is not None:
+        log.warning("backend_no_device_support", backend=backend_name, device=provider.device)
+
+    if "model_path" in signature.parameters and provider.model_path is not None:
+        kwargs["model_path"] = provider.model_path
+
+    backend_factory: Any = backend_cls
+    return cast(TTSBackend, backend_factory(**kwargs))
 
 
 class PositiveGenerator:
@@ -149,7 +171,7 @@ class PositiveGenerator:
                     break
 
                 try:
-                    backend = _create_backend_with_speed(provider.backend, provider.speed)
+                    backend = _create_backend_for_provider(provider)
                 except Exception as e:
                     raise PositiveGeneratorError(f"Failed to get TTS backend: {e}") from e
 

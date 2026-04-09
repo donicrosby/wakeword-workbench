@@ -14,7 +14,7 @@ uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
 
-If your chosen config uses a missing TTS backend, install `uv sync --extra kokoro` or `uv sync --extra piper` first.
+If your chosen config uses a missing TTS backend, install the matching extra first: `uv sync --extra kokoro`, `uv sync --extra kokoro-cuda`, `uv sync --extra kokoro-openvino`, `uv sync --extra piper`, or `uv sync --extra piper-cuda`.
 
 ## Table of Contents
 
@@ -84,8 +84,17 @@ You need at least one TTS backend to generate positive samples:
 # Option 1: Kokoro TTS (recommended)
 uv sync --extra kokoro
 
+# Option 1b: Kokoro with CUDA
+uv sync --extra kokoro-cuda
+
+# Option 1c: Kokoro with OpenVINO
+uv sync --extra kokoro-openvino
+
 # Option 2: Piper TTS
 uv sync --extra piper
+
+# Option 2b: Piper with CUDA
+uv sync --extra piper-cuda
 
 # Option 3: All backends
 uv sync --all-extras
@@ -208,6 +217,11 @@ Error: Backend 'kokoro' not available
 **Solution:**
 ```bash
 uv sync --extra kokoro
+# or, for acceleration-aware installs:
+uv sync --extra kokoro-cuda
+uv sync --extra kokoro-openvino
+uv sync --extra piper
+uv sync --extra piper-cuda
 ```
 
 #### Invalid Config Field
@@ -754,8 +768,15 @@ Error: Backend 'kokoro' not available
 # Install Kokoro TTS
 uv sync --extra kokoro
 
+# Or Kokoro with CUDA/OpenVINO
+uv sync --extra kokoro-cuda
+uv sync --extra kokoro-openvino
+
 # Or install Piper TTS
 uv sync --extra piper
+
+# Or Piper with CUDA
+uv sync --extra piper-cuda
 ```
 
 #### Config Validation Failed

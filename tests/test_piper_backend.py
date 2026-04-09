@@ -431,7 +431,16 @@ class TestPiperBackendCaching:
                     backend = piper_module.PiperBackend(model_path=str(model_path))
                     result = backend.synthesize("hello world")
 
-                    cached = mock_cache.get("hello world", "test_model", "piper", 1.0)
+                    cached = mock_cache.get(
+                        "hello world",
+                        "test_model",
+                        "piper",
+                        1.0,
+                        options={
+                            "acceleration": "cpu",
+                            "model_path": str(model_path),
+                        },
+                    )
                     assert cached is not None
                     np.testing.assert_array_equal(cached.audio, result.audio)
 
@@ -454,7 +463,17 @@ class TestPiperBackendCaching:
             sample_rate=16000,
             duration=1.0,
         )
-        mock_cache.put("hello world", "test_model", "piper", cached_result, 1.0)
+        mock_cache.put(
+            "hello world",
+            "test_model",
+            "piper",
+            cached_result,
+            1.0,
+            options={
+                "acceleration": "cpu",
+                "model_path": str(model_path),
+            },
+        )
 
         mock_piper_voice.synthesize_wav = MagicMock()
         piper_module._PIPER_AVAILABLE = True
@@ -466,6 +485,6 @@ class TestPiperBackendCaching:
                 result = backend.synthesize("hello world")
 
                 # Voice synthesis should NOT have been called
-                mock_piper_voice.synthesize_wav.assert_not_called()
+                mock_piper_voice.load.return_value.synthesize_wav.assert_not_called()
 
                 np.testing.assert_array_equal(result.audio, cached_audio)

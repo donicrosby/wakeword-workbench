@@ -14,7 +14,7 @@ uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
 
-If validation reports a missing TTS backend, install `uv sync --extra kokoro` or `uv sync --extra piper`.
+If validation reports a missing TTS backend, install `uv sync --extra kokoro`, `uv sync --extra kokoro-cuda`, `uv sync --extra kokoro-openvino`, `uv sync --extra piper`, or `uv sync --extra piper-cuda`.
 
 ## Table of Contents
 
@@ -96,6 +96,9 @@ tts.providers  # list[TTSProviderConfig] (must not be empty)
 tts.providers[0].backend  # str (e.g., "kokoro", "piper")
 tts.providers[0].voices  # list[str] (must not be empty)
 tts.providers[0].speed  # float (0 < speed <= 3.0, default 1.0)
+tts.providers[0].acceleration  # str (cpu, cuda, openvino)
+tts.providers[0].device  # str | None (optional device selector)
+tts.providers[0].model_path  # str | None (optional explicit model path)
 
 # Augmentation configuration
 aug = config.augmentation

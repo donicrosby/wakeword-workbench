@@ -9,7 +9,7 @@ Run this sequence before using any workflow in this repo:
 ```bash
 uv sync --group dev
 source .venv/bin/activate
-uv run pre-commit install
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 uv run wakeword-workbench --help
 uv run wakeword-workbench validate examples/basic_config.yaml
 ```
@@ -27,6 +27,8 @@ uv sync --extra piper-cuda
 ```
 
 Agent-specific conventions and anti-drift rules live in [AGENTS.md](AGENTS.md).
+
+Commits are enforced with conventional commit messages, and pre-commit now runs `mypy` in addition to Ruff and file hygiene checks.
 
 ## Quick Links
 

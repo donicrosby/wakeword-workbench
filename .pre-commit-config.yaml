@@ -1,4 +1,5 @@
 minimum_pre_commit_version: "4.5.0"
+default_install_hook_types: [pre-commit, commit-msg]
 exclude: ^(\.sisyphus/|notebooks/)
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -18,3 +19,16 @@ repos:
         args: [--fix]
       - id: ruff-format
         types_or: [python, pyi]
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run mypy src/wakeword_workbench
+        language: system
+        pass_filenames: false
+        types_or: [python, pyi]
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]

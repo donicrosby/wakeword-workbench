@@ -17,7 +17,7 @@ Use this exact startup sequence before making changes so you do not get stuck on
 uv sync --group dev
 
 # 2) Install the local git hooks for repo checks
-uv run pre-commit install
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 # 3) Optional: install TTS backends used by config/examples
 uv sync --extra kokoro
@@ -71,7 +71,7 @@ If validation fails because a backend is missing, install the required backend e
 # Development
 uv sync                    # Install dependencies
 uv sync --group dev        # With dev dependencies
-uv run pre-commit install  # Install repo git hooks
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg  # Install repo git hooks
 uv run pre-commit run --all-files  # Run hooks manually
 uv sync --extra kokoro     # With Kokoro TTS
 uv sync --extra piper      # With Piper TTS

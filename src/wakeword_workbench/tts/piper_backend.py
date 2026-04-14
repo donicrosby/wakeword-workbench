@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import wave
+from collections import OrderedDict
 from importlib import import_module
 from io import BytesIO
 from pathlib import Path
+from threading import RLock
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, cast
 
 import numpy as np
@@ -100,6 +102,10 @@ class PiperBackend(TTSBackend):
     _TARGET_SAMPLE_RATE: ClassVar[int] = 16000
     """Target sample rate for wake word models."""
 
+    _voice_cache: ClassVar[dict[str, _PiperVoiceLike]] = OrderedDict()
+    _voice_cache_lock: ClassVar[RLock] = RLock()
+    _MAX_CACHED_VOICES: ClassVar[int] = 5
+
     def __init__(
         self,
         model_path: str | None = None,
@@ -137,6 +143,10 @@ class PiperBackend(TTSBackend):
         self.use_cuda = self.acceleration == "cuda"
         self.device = device
         self._voice: _PiperVoiceLike | None = None
+        self._voice_key: str | None = None
+
+        if not isinstance(type(self)._voice_cache, OrderedDict):
+            type(self)._voice_cache = OrderedDict(type(self)._voice_cache)
 
         # Resolve model_path: use provided path or download default
         if model_path is None:
@@ -152,12 +162,30 @@ class PiperBackend(TTSBackend):
         try:
             # Load the Piper voice model
             piper_voice_class: Any = PiperVoice
-            self._voice = cast(
+            voice_model = cast(
                 _PiperVoiceLike,
                 piper_voice_class.load(str(self.model_path), use_cuda=self.use_cuda),
             )
+            self._voice = voice_model
+            voice_key = self.model_path.stem
+            self._voice_key = voice_key
+            self._cache_voice(voice_key, voice_model)
         except Exception as e:
             raise TTSError(f"Failed to load Piper model: {e}") from e
+
+    @classmethod
+    def _cache_voice(cls, voice: str, voice_model: _PiperVoiceLike) -> None:
+        cache = cast(OrderedDict[str, _PiperVoiceLike], cls._voice_cache)
+        with cls._voice_cache_lock:
+            cache[voice] = voice_model
+            cache.move_to_end(voice)
+            if len(cache) > cls._MAX_CACHED_VOICES:
+                evicted_voice, _ = cache.popitem(last=False)
+                log.debug(
+                    "piper_voice_cache_evicted",
+                    evicted_voice=evicted_voice,
+                    cache_size=len(cache),
+                )
 
     @classmethod
     def _download_default_model(cls) -> Path:
@@ -279,17 +307,36 @@ class PiperBackend(TTSBackend):
                 f"Available: {', '.join(_KNOWN_VOICES[:5])}... ({len(_KNOWN_VOICES)} total)"
             )
 
-        model_path = self._download_voice_model(voice)
         try:
-            piper_voice_class: Any = PiperVoice
-            self._voice = cast(
-                _PiperVoiceLike,
-                piper_voice_class.load(str(model_path), use_cuda=self.use_cuda),
-            )
-            self.model_path = model_path
-            log.info("piper_voice_loaded", voice=voice, model_path=str(model_path))
+            cache = cast(OrderedDict[str, _PiperVoiceLike], self._voice_cache)
+            with self._voice_cache_lock:
+                cached_voice = cache.get(voice)
+                if cached_voice is not None:
+                    cache.move_to_end(voice)
+                    self._voice = cached_voice
+                    if self.model_path.stem != voice:
+                        self.model_path = self._download_voice_model(voice)
+                else:
+                    model_path = self._download_voice_model(voice)
+                    piper_voice_class: Any = PiperVoice
+                    voice_model = cast(
+                        _PiperVoiceLike,
+                        piper_voice_class.load(str(model_path), use_cuda=self.use_cuda),
+                    )
+                    self._voice = voice_model
+                    self.model_path = model_path
+                    self._cache_voice(voice, voice_model)
+            self._voice_key = voice
+            log.info("piper_voice_loaded", voice=voice, model_path=str(self.model_path))
         except Exception as e:
             raise TTSError(f"Failed to load Piper model for voice '{voice}': {e}") from e
+
+    def __del__(self) -> None:
+        voice_key = getattr(self, "_voice_key", None)
+        if voice_key:
+            with self._voice_cache_lock:
+                if voice_key not in self._voice_cache:
+                    log.debug("piper_voice_cache_missing_on_cleanup", voice=voice_key)
 
     @staticmethod
     def _download_voice_model(voice: str) -> Path:

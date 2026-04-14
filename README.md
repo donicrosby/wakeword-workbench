@@ -225,6 +225,18 @@ uv run wakeword-workbench run config.yaml
 | `--verbose`, `-v` | Enable DEBUG logging |
 | `--quiet`, `-q` | Only show ERROR logs |
 
+### Parallel I/O
+
+Use the `--parallelism` flag to speed up dataset generation by writing audio files in parallel while keeping TTS synthesis sequential:
+
+```bash
+uv run wakeword-workbench run config.yaml --parallelism 4
+```
+
+- **Default**: 1 (sequential I/O)
+- **Range**: 1-32 threads
+- **Note**: TTS synthesis remains sequential, only file I/O is parallelized
+
 ### Mining Hard Negatives
 
 Extract false positives from long audio recordings:

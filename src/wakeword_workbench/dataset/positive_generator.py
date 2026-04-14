@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import inspect
 import json
 from importlib import import_module
@@ -14,6 +15,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn
 from wakeword_workbench.config import Config, TTSProviderConfig
 from wakeword_workbench.logging_config import get_logger
 from wakeword_workbench.tts.base import TTSBackend, TTSError
+from wakeword_workbench.tts.pool import BackendPool
 from wakeword_workbench.tts.registry import _BACKENDS, list_available_backends
 
 log = get_logger(__name__)
@@ -87,12 +89,14 @@ class PositiveGenerator:
         output_dir: Directory where generated samples will be saved.
     """
 
-    def __init__(self, config: Config, output_dir: Path) -> None:
+    def __init__(self, config: Config, output_dir: Path, parallelism: int = 1) -> None:
         """Initialize the positive sample generator.
 
         Args:
             config: Configuration object with wake_word, tts, and samples settings.
             output_dir: Directory path where generated audio files will be saved.
+            parallelism: Number of I/O worker threads (1-32). TTS remains sequential,
+                only file I/O is parallelized. Defaults to 1.
 
         Raises:
             PositiveGeneratorError: If critical initialization fails.
@@ -101,6 +105,8 @@ class PositiveGenerator:
         self.output_dir = Path(output_dir)
         self._wake_word = config.wake_word
         self._providers = config.tts.providers
+        self._backend_pool = BackendPool()
+        self._parallelism = parallelism
 
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -136,22 +142,61 @@ class PositiveGenerator:
         variants = self._get_positive_phrases()
         log.info("positive_phrases_selected", count=len(variants), phrases=variants[:3])
 
-        # Build generation list: (provider, phrase, voice) combinations
+        # Phase 1: Build generation list from provider/phrase/voice combinations.
         combinations: list[tuple[TTSProviderConfig, str, str]] = []
         for variant in variants:
             for provider in self._providers:
                 for voice in provider.voices:
                     combinations.append((provider, variant, voice))
 
-        # Calculate actual samples to generate (may be more or less than count)
-        # We generate all combinations and return count of them
-        samples_per_combination = max(1, count // len(combinations)) if combinations else 0
+        if not combinations:
+            raise PositiveGeneratorError("No TTS provider/voice combinations available")
+
         total_needed = count
+
+        # Keep voice diversity by assigning samples in round-robin order first.
+        assigned_combinations = [combinations[i % len(combinations)] for i in range(total_needed)]
+
+        # Phase 2: Group execution by backend/runtime/voice. This minimizes expensive
+        # model/voice switches while keeping the original round-robin distribution.
+        grouped_combinations = sorted(
+            assigned_combinations,
+            key=lambda combo: (
+                combo[0].backend,
+                combo[0].acceleration,
+                combo[2],
+            ),
+        )
+
+        def provider_instance_key(
+            provider: TTSProviderConfig,
+        ) -> tuple[str, float, str, str | None, str | None]:
+            key_getter = cast(Any, getattr(provider, "backend_instance_key", None))
+            if callable(key_getter):
+                return cast(tuple[str, float, str, str | None, str | None], key_getter())
+
+            backend, _voices, speed, acceleration, device, model_path = provider.backend_cache_key()
+            return (backend, speed, acceleration, device, model_path)
+
+        backends_by_key: dict[tuple[str, float, str, str | None, str | None], TTSBackend] = {}
+        for provider, _phrase, _voice in grouped_combinations:
+            key = provider_instance_key(provider)
+            if key in backends_by_key:
+                continue
+            try:
+                backends_by_key[key] = self._backend_pool.get(provider)
+            except Exception as e:
+                raise PositiveGeneratorError(f"Failed to get TTS backend: {e}") from e
 
         manifest_entries: list[dict] = []
         file_index = 0
         generated_count = 0
         failed_count = 0
+        active_group: tuple[str, str, str] | None = None
+        active_voice_by_backend: dict[tuple[str, float, str, str | None, str | None], str] = {}
+
+        # Collect write operations for parallel I/O
+        write_operations: list[tuple[Path, np.ndarray, dict]] = []
 
         # Progress tracking
         with Progress(
@@ -165,19 +210,27 @@ class PositiveGenerator:
                 total=total_needed,
             )
 
-            # Generate samples
-            for provider, phrase, voice in combinations:
-                if generated_count >= total_needed:
-                    break
+            # Generate samples using grouped execution order.
+            for provider, phrase, voice in grouped_combinations:
+                backend_key = provider_instance_key(provider)
+                backend = backends_by_key[backend_key]
 
-                try:
-                    backend = _create_backend_for_provider(provider)
-                except Exception as e:
-                    raise PositiveGeneratorError(f"Failed to get TTS backend: {e}") from e
+                current_group = (provider.backend, provider.acceleration, voice)
+                if current_group != active_group:
+                    active_group = current_group
+                    progress.update(
+                        task,
+                        description=(
+                            "[cyan]Generating positive samples... "
+                            f"({provider.backend}/{provider.acceleration}/{voice})"
+                        ),
+                    )
 
                 # Set voice for this backend
                 try:
-                    backend.set_voice(voice)
+                    if active_voice_by_backend.get(backend_key) != voice:
+                        backend.set_voice(voice)
+                        active_voice_by_backend[backend_key] = voice
                 except TTSError as e:
                     log.warning("voice_set_failed", voice=voice, error=str(e))
                     continue
@@ -189,67 +242,95 @@ class PositiveGenerator:
                         error=str(e),
                     )
 
-                # Generate samples for this combination
-                for _sample_idx in range(samples_per_combination):
-                    if generated_count >= total_needed:
-                        break
+                try:
+                    # Synthesize audio
+                    result = backend.synthesize(phrase)
 
+                    # Generate filename
+                    filename = f"{self._wake_word}_{voice}_{file_index:04d}.wav"
+                    file_path = self.output_dir / filename
+
+                    # Ensure mono at 16000 Hz
+                    audio = self._ensure_format(result.audio, result.sample_rate)
+                    audio = self._ensure_mono(audio)
+
+                    # Calculate duration in milliseconds
+                    duration_ms = int(len(audio) / 16000 * 1000)
+
+                    # Create manifest entry
+                    entry = {
+                        "path": filename,
+                        "label": 1,
+                        "text": phrase,
+                        "voice": voice,
+                        "backend": provider.backend,
+                        "duration_ms": duration_ms,
+                    }
+
+                    # Store for parallel write
+                    write_operations.append((file_path, audio, entry))
+
+                    generated_count += 1
+                    file_index += 1
+
+                    progress.update(task, advance=1)
+
+                except TTSError as e:
+                    failed_count += 1
+                    log.warning(
+                        "tts_synthesis_failed",
+                        backend=provider.backend,
+                        phrase=phrase,
+                        voice=voice,
+                        error=str(e),
+                    )
+                    continue
+                except Exception as e:
+                    failed_count += 1
+                    log.error(
+                        "unexpected_error",
+                        backend=provider.backend,
+                        phrase=phrase,
+                        voice=voice,
+                        error=str(e),
+                    )
+                    continue
+
+        # Perform parallel file I/O for WAV writes
+        if write_operations:
+            if self._parallelism > 1:
+                soundfile = import_module("soundfile")
+                with concurrent.futures.ThreadPoolExecutor(max_workers=self._parallelism) as pool:
+                    futures = {
+                        pool.submit(soundfile.write, file_path, audio, 16000): entry
+                        for file_path, audio, entry in write_operations
+                    }
+                    done, _not_done = concurrent.futures.wait(futures.keys())
+
+                    for future in done:
+                        entry = futures[future]
+                        try:
+                            future.result()
+                            manifest_entries.append(entry)
+                        except (OSError, ValueError) as exc:
+                            log.error(
+                                "positive_file_write_failed",
+                                path=str(entry["path"]),
+                                error=str(exc),
+                            )
+            else:
+                # Sequential I/O when parallelism is 1
+                soundfile = import_module("soundfile")
+                for file_path, audio, entry in write_operations:
                     try:
-                        # Synthesize audio
-                        result = backend.synthesize(phrase)
-
-                        # Generate filename
-                        filename = f"{self._wake_word}_{voice}_{file_index:04d}.wav"
-                        file_path = self.output_dir / filename
-
-                        # Ensure mono at 16000 Hz
-                        audio = self._ensure_format(result.audio, result.sample_rate)
-                        audio = self._ensure_mono(audio)
-
-                        # Save WAV file
-                        soundfile = import_module("soundfile")
                         soundfile.write(file_path, audio, 16000)
-
-                        # Calculate duration in milliseconds
-                        duration_ms = int(len(audio) / 16000 * 1000)
-
-                        # Add to manifest
-                        manifest_entries.append(
-                            {
-                                "path": filename,
-                                "label": 1,
-                                "text": phrase,
-                                "voice": voice,
-                                "backend": provider.backend,
-                                "duration_ms": duration_ms,
-                            }
-                        )
-
-                        generated_count += 1
-                        file_index += 1
-
-                        progress.update(task, advance=1)
-
-                    except TTSError as e:
-                        failed_count += 1
-                        log.warning(
-                            "tts_synthesis_failed",
-                            backend=provider.backend,
-                            phrase=phrase,
-                            voice=voice,
-                            error=str(e),
-                        )
-                        continue
-                    except Exception as e:
-                        failed_count += 1
+                        manifest_entries.append(entry)
+                    except (OSError, ValueError) as exc:
                         log.error(
-                            "unexpected_error",
-                            backend=provider.backend,
-                            phrase=phrase,
-                            voice=voice,
-                            error=str(e),
+                            "positive_file_write_failed",
+                            path=str(entry["path"]),
+                            error=str(exc),
                         )
-                        continue
 
         # Write manifest
         manifest_path = self.output_dir / "positive_manifest.jsonl"
@@ -288,8 +369,7 @@ class PositiveGenerator:
         """
         if sample_rate != 16000:
             # Resample to 16000 Hz
-            import librosa
-
+            librosa = import_module("librosa")
             audio = librosa.resample(audio, orig_sr=sample_rate, target_sr=16000)
             audio = audio.astype(np.float32)
         return audio

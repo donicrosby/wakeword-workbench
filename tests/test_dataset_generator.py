@@ -1,7 +1,10 @@
 """Tests for DatasetGenerator."""
 
+# pyright: reportMissingImports=false
+
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -30,7 +33,7 @@ from wakeword_workbench.dataset.generator import (
     GeneratorTTSError,
 )
 from wakeword_workbench.dataset.metadata import Manifest, ManifestEntry
-from wakeword_workbench.tts.base import TTSResult
+from wakeword_workbench.tts.base import TTSError, TTSResult
 
 
 class TestGeneratorErrorHierarchy:
@@ -364,14 +367,14 @@ class TestDatasetGeneratorGenerate:
     @patch.object(DatasetGenerator, "_save_splits")
     @patch("wakeword_workbench.dataset.generator.PositiveGenerator")
     @patch("wakeword_workbench.dataset.generator.Manifest")
-    @patch("wakeword_workbench.dataset.generator._create_backend_for_provider")
+    @patch("wakeword_workbench.tts.pool.BackendPool.get")
     @patch("wakeword_workbench.dataset.generator.merge")
     @patch("wakeword_workbench.dataset.generator.split")
     def test_generate_success(
         self,
         mock_split: MagicMock,
         mock_merge: MagicMock,
-        mock_create_backend: MagicMock,
+        mock_backend_pool_get: MagicMock,
         mock_manifest: MagicMock,
         mock_pos_gen: MagicMock,
         mock_save_splits: MagicMock,
@@ -410,7 +413,7 @@ class TestDatasetGeneratorGenerate:
             sample_rate=16000,
             duration=1.0,
         )
-        mock_create_backend.return_value = mock_backend
+        mock_backend_pool_get.return_value = mock_backend
 
         # Setup mock merge
         mock_merge.return_value = mock_combined
@@ -436,7 +439,7 @@ class TestDatasetGeneratorGenerate:
         assert result.total_negatives >= 1
         assert result.total_entries >= 2
         assert result.output_dir == mock_generator.output_dir
-        mock_create_backend.assert_called()
+        mock_backend_pool_get.assert_called()
 
 
 class TestDatasetGeneratorNegativePhrases:
@@ -703,6 +706,147 @@ class TestDatasetGeneratorVoiceSelection:
             ("kokoro", "v2"),
             ("piper", "v3"),
         ]
+
+
+class TestDatasetGeneratorNegativeVoiceGrouping:
+    """Test grouped negative synthesis behavior."""
+
+    def _make_grouping_config(self, tmp_path: Path) -> Config:
+        return Config(
+            wake_word="hey_vera",
+            samples=SamplesConfig(positives=100, negatives_multiplier=5),
+            tts=TTSConfig(
+                providers=[
+                    TTSProviderConfig(backend="kokoro", voices=["voice_a", "voice_b", "voice_c"]),
+                    TTSProviderConfig(backend="piper", voices=["voice_d"]),
+                ]
+            ),
+            augmentation=AugmentationConfig(
+                noise_snr=[-10, 10],
+                reverb_probability=0.5,
+                gain_range=[-45, 0],
+            ),
+            output=OutputConfig(path=str(tmp_path / "output"), format=["microwakeword"]),
+        )
+
+    @patch("wakeword_workbench.dataset.generator.import_module")
+    def test_voice_grouping_contiguous_execution_order(
+        self, mock_import: MagicMock, tmp_path: Path
+    ) -> None:
+        """voice_grouping: grouped synthesis should execute each voice contiguously."""
+        config = self._make_grouping_config(tmp_path)
+        generator = DatasetGenerator(config, output_dir=tmp_path / "dataset")
+        phrases = [f"phrase {i}" for i in range(50)]
+
+        mock_soundfile = MagicMock()
+        mock_import.return_value = mock_soundfile
+
+        backend = MagicMock()
+        backend.synthesize.return_value = TTSResult(
+            audio=np.zeros(16000, dtype=np.float32),
+            sample_rate=16000,
+            duration=1.0,
+        )
+        generator._backend_pool.get = MagicMock(return_value=backend)
+
+        manifest = generator._synthesize_negatives(phrases)
+        voices = [entry.voice for entry in manifest]
+
+        for voice in {voice for voice in voices if voice is not None}:
+            positions = [idx for idx, current in enumerate(voices) if current == voice]
+            assert positions == list(range(positions[0], positions[-1] + 1))
+
+        expected_round_robin = [
+            voice
+            for index in range(len(phrases))
+            for _provider, voice in [
+                config.tts.get_all_voices()[index % len(config.tts.get_all_voices())]
+            ]
+        ]
+        assert Counter(voices) == Counter(expected_round_robin)
+
+    @patch("wakeword_workbench.dataset.generator.import_module")
+    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
+    def test_voice_grouping_uses_backend_pool_not_factory(
+        self,
+        mock_create_backend_for_provider: MagicMock,
+        mock_import: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """voice_grouping: backend pool should provide backend instances once per provider."""
+        config = self._make_grouping_config(tmp_path)
+        generator = DatasetGenerator(config, output_dir=tmp_path / "dataset")
+        phrases = [f"phrase {i}" for i in range(50)]
+
+        mock_soundfile = MagicMock()
+        mock_import.return_value = mock_soundfile
+
+        backend = MagicMock()
+        backend.synthesize.return_value = TTSResult(
+            audio=np.zeros(16000, dtype=np.float32),
+            sample_rate=16000,
+            duration=1.0,
+        )
+
+        generator._backend_pool.get = MagicMock(return_value=backend)
+        generator._synthesize_negatives(phrases)
+
+        assert generator._backend_pool.get.call_count == len(config.tts.providers)
+        mock_create_backend_for_provider.assert_not_called()
+
+    @patch("wakeword_workbench.dataset.generator.import_module")
+    def test_voice_grouping_manifest_regression_by_path(
+        self, mock_import: MagicMock, tmp_path: Path
+    ) -> None:
+        """voice_grouping: path-indexed manifest entries should match round-robin baseline."""
+        config = self._make_grouping_config(tmp_path)
+        generator = DatasetGenerator(config, output_dir=tmp_path / "dataset")
+        phrases = [f"phrase {i}" for i in range(50)]
+
+        mock_soundfile = MagicMock()
+        mock_import.return_value = mock_soundfile
+
+        backend = MagicMock()
+        backend.synthesize.return_value = TTSResult(
+            audio=np.zeros(16000, dtype=np.float32),
+            sample_rate=16000,
+            duration=1.0,
+        )
+        generator._backend_pool.get = MagicMock(return_value=backend)
+
+        manifest = generator._synthesize_negatives(phrases)
+        manifest_by_path = {entry.path: entry for entry in manifest}
+        provider_voices = config.tts.get_all_voices()
+
+        assert len(manifest_by_path) == 50
+        for index, phrase in enumerate(phrases):
+            backend_name, voice = provider_voices[index % len(provider_voices)]
+            path = f"negatives/negative_{index:06d}.wav"
+
+            assert path in manifest_by_path
+            entry = manifest_by_path[path]
+            assert entry.label == 0
+            assert entry.text == phrase
+            assert entry.voice == voice
+            assert entry.backend == backend_name
+
+    @patch("wakeword_workbench.dataset.generator.import_module")
+    def test_voice_grouping_raises_when_all_synthesis_fails(
+        self, mock_import: MagicMock, tmp_path: Path
+    ) -> None:
+        """voice_grouping: raise GeneratorTTSError when every grouped synthesis fails."""
+        config = self._make_grouping_config(tmp_path)
+        generator = DatasetGenerator(config, output_dir=tmp_path / "dataset")
+
+        mock_soundfile = MagicMock()
+        mock_import.return_value = mock_soundfile
+
+        backend = MagicMock()
+        backend.synthesize.side_effect = TTSError("backend failure")
+        generator._backend_pool.get = MagicMock(return_value=backend)
+
+        with pytest.raises(GeneratorTTSError, match="Failed to synthesize any negative samples"):
+            generator._synthesize_negatives(["alpha", "beta", "gamma"])
 
 
 class TestDatasetGeneratorHelpers:

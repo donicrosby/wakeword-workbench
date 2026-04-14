@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import time
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -14,14 +15,14 @@ from wakeword_workbench.config import Config, TTSProviderConfig
 from wakeword_workbench.logging_config import get_logger
 from wakeword_workbench.negatives.phrase_generator import generate_confusions
 from wakeword_workbench.negatives.synthetic_generator import generate_synthetic_negatives
-from wakeword_workbench.tts.base import TTSBackend, TTSError
+from wakeword_workbench.tts.base import TTSError
+from wakeword_workbench.tts.pool import BackendPool
 
 from .merger import MergerError, merge
 from .metadata import Manifest, ManifestEntry, ManifestError
 from .positive_generator import (
     PositiveGenerator,
     PositiveGeneratorError,
-    _create_backend_for_provider,
 )
 from .splitter import SplitValidationError, split
 
@@ -122,7 +123,9 @@ class DatasetGenerator:
         self.output_dir = Path(output_dir) if output_dir is not None else Path(config.output.path)
         self._voice_index = 0
         self._validate_files = False
+        self._parallelism = 1
         self._providers = config.tts.providers
+        self._backend_pool = BackendPool()
 
         log.info(
             "dataset_generator_init",
@@ -141,6 +144,7 @@ class DatasetGenerator:
         test_ratio: float = 0.15,
         ratio: float | None = None,
         validate_files: bool = False,
+        parallelism: int = 1,
     ) -> GenerationResult:
         """Generate a complete dataset with train/val/test splits.
 
@@ -152,6 +156,8 @@ class DatasetGenerator:
             test_ratio: Fraction for test split.
             ratio: Target neg:pos ratio for merge; None uses all negatives.
             validate_files: Whether to validate referenced files exist.
+            parallelism: Number of I/O worker threads (1-32). TTS remains sequential,
+                only file I/O is parallelized. Defaults to 1.
 
         Returns:
             GenerationResult with manifests and generation statistics.
@@ -187,10 +193,13 @@ class DatasetGenerator:
             raise GeneratorConfigError("train_ratio + val_ratio + test_ratio must sum to 1.0")
         if ratio is not None and ratio <= 0:
             raise GeneratorConfigError(f"ratio must be positive when provided, got {ratio}")
+        if parallelism < 1 or parallelism > 32:
+            raise GeneratorConfigError(f"parallelism must be between 1 and 32, got {parallelism}")
 
         total_negatives_target = resolved_positive_count * resolved_neg_multiplier
         output_dir = self._ensure_output_dir()
         self._validate_files = validate_files
+        self._parallelism = parallelism
 
         self._log_progress("start", "beginning dataset generation")
         log.info(
@@ -203,10 +212,11 @@ class DatasetGenerator:
             split_test=test_ratio,
             merge_ratio=ratio,
             validate_files=validate_files,
+            parallelism=parallelism,
         )
 
         self._log_progress("positives", "generating positive samples")
-        pos_manifest = self._generate_positives(resolved_positive_count)
+        pos_manifest = self._generate_positives(resolved_positive_count, parallelism)
 
         self._log_progress("negative_phrases", "generating negative phrases")
         negative_phrases = self._generate_negative_phrases(total_negatives_target)
@@ -257,11 +267,12 @@ class DatasetGenerator:
         log.info("dataset_generation_complete", **result.summary())
         return result
 
-    def _generate_positives(self, count: int) -> Manifest:
+    def _generate_positives(self, count: int, parallelism: int = 1) -> Manifest:
         """Generate positive samples via PositiveGenerator.
 
         Args:
             count: Number of positive samples.
+            parallelism: Number of I/O worker threads for parallel file writing.
 
         Returns:
             Manifest with positive entries.
@@ -270,7 +281,7 @@ class DatasetGenerator:
             GeneratorIOError: Positive generation failed.
         """
         try:
-            generator = PositiveGenerator(self.config, self.output_dir)
+            generator = PositiveGenerator(self.config, self.output_dir, parallelism=parallelism)
             manifest_path = generator.generate(count)
             manifest = Manifest.load(manifest_path)
         except (PositiveGeneratorError, ManifestError, OSError) as exc:
@@ -469,21 +480,59 @@ class DatasetGenerator:
 
         entries: list[ManifestEntry] = []
         failed = 0
-        backend_cache: dict[
-            tuple[str, tuple[str, ...], float, str, str | None, str | None], TTSBackend
-        ] = {}
 
-        for index, phrase in enumerate(phrases):
-            provider, voice = self._select_voice_for_phrase(phrase)
+        provider_voices = [
+            (provider, voice) for provider in self._providers for voice in provider.voices
+        ]
+
+        # Phase 1: preserve the existing round-robin distribution by pre-assigning
+        # a provider/voice to each phrase in original phrase order.
+        assigned_provider_voices = [
+            provider_voices[(self._voice_index + index) % len(provider_voices)]
+            for index in range(len(phrases))
+        ]
+        self._voice_index += len(phrases)
+
+        # Phase 2: sort execution by backend/runtime/voice so synthesis runs in
+        # contiguous groups and minimizes expensive model/voice switching.
+        phrase_voice_assignments = [
+            (index, phrase, *self._select_voice_for_phrase(phrase, assigned_provider_voices, index))
+            for index, phrase in enumerate(phrases)
+        ]
+        grouped_assignments = sorted(
+            phrase_voice_assignments,
+            key=lambda assignment: (
+                assignment[2].backend,
+                assignment[2].acceleration,
+                assignment[3],
+            ),
+        )
+
+        def provider_instance_key(
+            provider: TTSProviderConfig,
+        ) -> tuple[str, float, str, str | None, str | None]:
+            key_getter = cast(Any, getattr(provider, "backend_instance_key", None))
+            if callable(key_getter):
+                return cast(tuple[str, float, str, str | None, str | None], key_getter())
+
+            backend, _voices, speed, acceleration, device, model_path = provider.backend_cache_key()
+            return (backend, speed, acceleration, device, model_path)
+
+        backends_by_key = {
+            provider_instance_key(provider): self._backend_pool.get(provider)
+            for provider in self._providers
+        }
+
+        # Collect write operations for parallel I/O
+        write_operations: list[tuple[Path, np.ndarray, ManifestEntry]] = []
+
+        for index, phrase, provider, voice in grouped_assignments:
             filename = f"negative_{index:06d}.wav"
             file_path = negatives_dir / filename
-            provider_key = provider.backend_cache_key()
+            backend_key = provider_instance_key(provider)
 
             try:
-                backend = backend_cache.get(provider_key)
-                if backend is None:
-                    backend = _create_backend_for_provider(provider)
-                    backend_cache[provider_key] = backend
+                backend = backends_by_key[backend_key]
 
                 try:
                     backend.set_voice(voice)
@@ -498,21 +547,20 @@ class DatasetGenerator:
                 result = backend.synthesize(phrase)
                 audio = self._ensure_format(result.audio, result.sample_rate)
                 audio = self._ensure_mono(audio)
-                soundfile = import_module("soundfile")
-                soundfile.write(file_path, audio, 16000)
 
                 duration_ms = int(len(audio) / 16000 * 1000)
-                entries.append(
-                    ManifestEntry(
-                        path=f"negatives/{filename}",
-                        label=0,
-                        text=phrase,
-                        voice=voice,
-                        backend=provider.backend,
-                        duration_ms=duration_ms,
-                        sample_rate=16000,
-                    )
+                entry = ManifestEntry(
+                    path=f"negatives/{filename}",
+                    label=0,
+                    text=phrase,
+                    voice=voice,
+                    backend=provider.backend,
+                    duration_ms=duration_ms,
+                    sample_rate=16000,
                 )
+
+                # Store for parallel write
+                write_operations.append((file_path, audio, entry))
             except (TTSError, OSError, ValueError) as exc:
                 failed += 1
                 log.warning(
@@ -522,6 +570,44 @@ class DatasetGenerator:
                     voice=voice,
                     error=str(exc),
                 )
+
+        # Perform parallel file I/O for WAV writes
+        if write_operations:
+            if self._parallelism > 1:
+                soundfile = import_module("soundfile")
+                with concurrent.futures.ThreadPoolExecutor(max_workers=self._parallelism) as pool:
+                    futures = {
+                        pool.submit(soundfile.write, file_path, audio, 16000): entry
+                        for file_path, audio, entry in write_operations
+                    }
+                    done, not_done = concurrent.futures.wait(futures.keys())
+
+                    for future in done:
+                        entry = futures[future]
+                        try:
+                            future.result()
+                            entries.append(entry)
+                        except (OSError, ValueError) as exc:
+                            failed += 1
+                            log.error(
+                                "negative_file_write_failed",
+                                path=entry.path,
+                                error=str(exc),
+                            )
+            else:
+                # Sequential I/O when parallelism is 1
+                soundfile = import_module("soundfile")
+                for file_path, audio, entry in write_operations:
+                    try:
+                        soundfile.write(file_path, audio, 16000)
+                        entries.append(entry)
+                    except (OSError, ValueError) as exc:
+                        failed += 1
+                        log.error(
+                            "negative_file_write_failed",
+                            path=entry.path,
+                            error=str(exc),
+                        )
 
         if not entries:
             raise GeneratorTTSError(
@@ -538,17 +624,28 @@ class DatasetGenerator:
         )
         return Manifest(entries)
 
-    def _select_voice_for_phrase(self, phrase: str) -> tuple[TTSProviderConfig, str]:
+    def _select_voice_for_phrase(
+        self,
+        phrase: str,
+        assigned_provider_voices: list[tuple[TTSProviderConfig, str]] | None = None,
+        assigned_index: int | None = None,
+    ) -> tuple[TTSProviderConfig, str]:
         """Select a provider and voice for synthesizing a phrase.
 
         Uses round-robin across configured voices.
 
         Args:
             phrase: Phrase to be synthesized.
+            assigned_provider_voices: Optional pre-assigned provider/voice list.
+            assigned_index: Index within pre-assigned provider/voice list.
 
         Returns:
             Tuple of (provider_config, voice_identifier).
         """
+        if assigned_provider_voices is not None and assigned_index is not None:
+            del phrase  # phrase reserved for future voice selection strategies
+            return assigned_provider_voices[assigned_index]
+
         del phrase  # phrase reserved for future voice selection strategies
         provider_voices = [
             (provider, voice) for provider in self._providers for voice in provider.voices

@@ -94,6 +94,23 @@ class TTSProviderConfig:
             self.model_path,
         )
 
+    def backend_instance_key(self) -> tuple[str, float, str, str | None, str | None]:
+        """Return a key for backend instance reuse across different voice selections.
+
+        This key excludes the `voices` field, allowing BackendPool to reuse
+        the same backend instance for different voice selections.
+
+        Returns:
+            Tuple of (backend, speed, acceleration, device, model_path).
+        """
+        return (
+            self.backend,
+            self.speed,
+            self.acceleration,
+            self.device,
+            self.model_path,
+        )
+
 
 @dataclass
 class TTSConfig:

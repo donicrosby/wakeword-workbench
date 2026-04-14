@@ -1,8 +1,11 @@
 """Tests for positive_generator module."""
 
+# pyright: reportMissingImports=false
+
 from __future__ import annotations
 
 import json
+from importlib import import_module
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -94,10 +97,10 @@ class TestPositiveGenerator:
             generator.generate(-1)
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
+    @patch("wakeword_workbench.dataset.positive_generator.BackendPool.get")
     def test_generate_success(
         self,
-        mock_create_backend: MagicMock,
+        mock_pool_get: MagicMock,
         mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
@@ -107,7 +110,7 @@ class TestPositiveGenerator:
         mock_backend = MagicMock()
         mock_backend.synthesize.return_value = mock_tts_result
         mock_backend.set_voice.return_value = None
-        mock_create_backend.return_value = mock_backend
+        mock_pool_get.return_value = mock_backend
 
         # Make sf.write actually write files
         def real_write(path, audio, sr):
@@ -141,7 +144,7 @@ class TestPositiveGenerator:
             assert "duration_ms" in entry
             assert entry["duration_ms"] > 0
 
-        mock_create_backend.assert_called_with(mock_config.tts.providers[0])
+        mock_pool_get.assert_called_with(mock_config.tts.providers[0])
 
         # Verify WAV files were created
         wav_files = list(output_dir.glob("*.wav"))
@@ -152,10 +155,10 @@ class TestPositiveGenerator:
             assert wav_file.stem.startswith("hey_vera_")
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
+    @patch("wakeword_workbench.dataset.positive_generator.BackendPool.get")
     def test_generate_handles_tts_error(
         self,
-        mock_create_backend: MagicMock,
+        mock_pool_get: MagicMock,
         mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
@@ -185,7 +188,7 @@ class TestPositiveGenerator:
             return success_result
 
         mock_backend.synthesize.side_effect = synthesize_side_effect
-        mock_create_backend.return_value = mock_backend
+        mock_pool_get.return_value = mock_backend
 
         # Generate samples (should succeed despite one failure)
         manifest_path = PositiveGenerator(mock_config, output_dir).generate(3)
@@ -199,10 +202,10 @@ class TestPositiveGenerator:
         assert len(entries) <= 3
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
+    @patch("wakeword_workbench.dataset.positive_generator.BackendPool.get")
     def test_generate_returns_correct_manifest_path(
         self,
-        mock_create_backend: MagicMock,
+        mock_pool_get: MagicMock,
         mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
@@ -212,7 +215,7 @@ class TestPositiveGenerator:
         mock_backend = MagicMock()
         mock_backend.synthesize.return_value = mock_tts_result
         mock_backend.set_voice.return_value = None
-        mock_create_backend.return_value = mock_backend
+        mock_pool_get.return_value = mock_backend
 
         generator = PositiveGenerator(mock_config, output_dir)
         manifest_path = generator.generate(1)
@@ -220,10 +223,10 @@ class TestPositiveGenerator:
         assert manifest_path == output_dir / "positive_manifest.jsonl"
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
+    @patch("wakeword_workbench.dataset.positive_generator.BackendPool.get")
     def test_generate_uses_exact_wake_word_by_default(
         self,
-        mock_create_backend: MagicMock,
+        mock_pool_get: MagicMock,
         mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
@@ -233,17 +236,17 @@ class TestPositiveGenerator:
         mock_backend = MagicMock()
         mock_backend.synthesize.return_value = mock_tts_result
         mock_backend.set_voice.return_value = None
-        mock_create_backend.return_value = mock_backend
+        mock_pool_get.return_value = mock_backend
 
         manifest_path = PositiveGenerator(mock_config, output_dir).generate(1)
         assert manifest_path.exists()
         mock_backend.synthesize.assert_called_once_with("hey vera")
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
+    @patch("wakeword_workbench.dataset.positive_generator.BackendPool.get")
     def test_generate_uses_explicit_wake_word_variants(
         self,
-        mock_create_backend: MagicMock,
+        mock_pool_get: MagicMock,
         mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
@@ -254,7 +257,7 @@ class TestPositiveGenerator:
         mock_backend = MagicMock()
         mock_backend.synthesize.return_value = mock_tts_result
         mock_backend.set_voice.return_value = None
-        mock_create_backend.return_value = mock_backend
+        mock_pool_get.return_value = mock_backend
 
         manifest_path = PositiveGenerator(mock_config, output_dir).generate(4)
 
@@ -267,7 +270,7 @@ class TestPositiveGenerator:
     ) -> None:
         """Test that backend initialization failure raises error."""
         with patch(
-            "wakeword_workbench.dataset.positive_generator._create_backend_for_provider",
+            "wakeword_workbench.dataset.positive_generator.BackendPool.get",
             side_effect=Exception("Backend not available"),
         ):
             generator = PositiveGenerator(mock_config, output_dir)
@@ -275,10 +278,10 @@ class TestPositiveGenerator:
                 generator.generate(1)
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
+    @patch("wakeword_workbench.dataset.positive_generator.BackendPool.get")
     def test_wav_files_are_16khz_mono(
         self,
-        mock_create_backend: MagicMock,
+        mock_pool_get: MagicMock,
         mock_sf_write: MagicMock,
         mock_config: Config,
         output_dir: Path,
@@ -307,7 +310,7 @@ class TestPositiveGenerator:
         mock_backend = MagicMock()
         mock_backend.synthesize.return_value = stereo_result
         mock_backend.set_voice.return_value = None
-        mock_create_backend.return_value = mock_backend
+        mock_pool_get.return_value = mock_backend
 
         # Make sf.write actually write files so we can read them back
         def real_write(path, audio, sr):
@@ -315,8 +318,7 @@ class TestPositiveGenerator:
             if audio.ndim > 1:
                 audio = audio.mean(axis=1)
             if sr != 16000:
-                import librosa
-
+                librosa = import_module("librosa")
                 audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
             _real_write(path, audio.astype(np.float32), 16000)
 
@@ -335,10 +337,10 @@ class TestPositiveGenerator:
         assert audio.ndim == 1  # Mono
 
     @patch("soundfile.write")
-    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
+    @patch("wakeword_workbench.dataset.positive_generator.BackendPool.get")
     def test_generate_uses_multiple_providers(
         self,
-        mock_create_backend: MagicMock,
+        mock_pool_get: MagicMock,
         mock_sf_write: MagicMock,
         tmp_path: Path,
         output_dir: Path,
@@ -372,14 +374,14 @@ class TestPositiveGenerator:
             "runtime voice changes unsupported"
         )
 
-        def create_backend(provider: TTSProviderConfig) -> MagicMock:
+        def get_backend_from_pool(provider: TTSProviderConfig) -> MagicMock:
             if provider.backend == "kokoro":
                 return kokoro_backend
             if provider.backend == "piper":
                 return piper_backend
             raise AssertionError(f"unexpected backend {provider.backend}")
 
-        mock_create_backend.side_effect = create_backend
+        mock_pool_get.side_effect = get_backend_from_pool
         mock_sf_write.side_effect = lambda path, audio, sr: _real_write(path, audio, sr)
 
         manifest_path = PositiveGenerator(config, output_dir).generate(2)
@@ -390,6 +392,179 @@ class TestPositiveGenerator:
         assert {entry["backend"] for entry in entries} == {"kokoro", "piper"}
         assert {entry["voice"] for entry in entries} == {"af_sarah", "en_US-amy-low"}
         assert {entry["text"] for entry in entries} == {"hey vera"}
+
+    @patch("soundfile.write")
+    @patch("wakeword_workbench.dataset.positive_generator.BackendPool.get")
+    def test_voice_grouping_executes_same_voice_contiguously(
+        self,
+        mock_pool_get: MagicMock,
+        mock_sf_write: MagicMock,
+        tmp_path: Path,
+        output_dir: Path,
+        mock_tts_result: TTSResult,
+    ) -> None:
+        """Grouped execution keeps same voices contiguous for fewer model switches."""
+        config = Config(
+            wake_word="hey_vera",
+            wake_word_variants=["hey vera", "hey, vera"],
+            samples=SamplesConfig(positives=100, negatives_multiplier=5),
+            tts=TTSConfig(
+                providers=[
+                    TTSProviderConfig(
+                        backend="kokoro",
+                        voices=["af_sarah", "am_adam", "bf_emma"],
+                        speed=1.0,
+                    )
+                ]
+            ),
+            augmentation=AugmentationConfig(
+                noise_snr=[-10, 10],
+                reverb_probability=0.5,
+                gain_range=[-45, 0],
+            ),
+            output=OutputConfig(path=str(tmp_path / "output"), format=["microwakeword"]),
+        )
+
+        backend = MagicMock()
+        backend.synthesize.return_value = mock_tts_result
+        backend.set_voice.return_value = None
+        mock_pool_get.return_value = backend
+        mock_sf_write.side_effect = lambda path, audio, sr: _real_write(path, audio, sr)
+
+        manifest_path = PositiveGenerator(config, output_dir).generate(6)
+
+        with open(manifest_path, encoding="utf-8") as f:
+            entries = [json.loads(line) for line in f]
+
+        voice_indices: dict[str, list[int]] = {"af_sarah": [], "am_adam": [], "bf_emma": []}
+        for idx, entry in enumerate(entries):
+            voice_indices[entry["voice"]].append(idx)
+
+        assert voice_indices["af_sarah"] == [0, 1]
+        assert voice_indices["am_adam"] == [2, 3]
+        assert voice_indices["bf_emma"] == [4, 5]
+
+    @patch("soundfile.write")
+    @patch("wakeword_workbench.dataset.positive_generator._create_backend_for_provider")
+    @patch("wakeword_workbench.dataset.positive_generator.BackendPool.get")
+    def test_voice_grouping_uses_backend_pool_instead_of_factory(
+        self,
+        mock_pool_get: MagicMock,
+        mock_create_backend: MagicMock,
+        mock_sf_write: MagicMock,
+        tmp_path: Path,
+        output_dir: Path,
+        mock_tts_result: TTSResult,
+    ) -> None:
+        """BackendPool should be used and backend factory should be unused."""
+        config = Config(
+            wake_word="hey_vera",
+            samples=SamplesConfig(positives=100, negatives_multiplier=5),
+            tts=TTSConfig(
+                providers=[
+                    TTSProviderConfig(backend="kokoro", voices=["af_sarah", "am_adam"], speed=1.0),
+                    TTSProviderConfig(backend="piper", voices=["en_US-amy-low", "en_US-ryan-low"]),
+                ]
+            ),
+            augmentation=AugmentationConfig(
+                noise_snr=[-10, 10],
+                reverb_probability=0.5,
+                gain_range=[-45, 0],
+            ),
+            output=OutputConfig(path=str(tmp_path / "output"), format=["microwakeword"]),
+        )
+
+        backend_by_provider: dict[str, MagicMock] = {}
+        for provider in config.tts.providers:
+            backend = MagicMock()
+            backend.synthesize.return_value = mock_tts_result
+            backend.set_voice.return_value = None
+            backend_by_provider[provider.backend] = backend
+
+        mock_pool_get.side_effect = lambda provider: backend_by_provider[provider.backend]
+        mock_sf_write.side_effect = lambda path, audio, sr: _real_write(path, audio, sr)
+
+        PositiveGenerator(config, output_dir).generate(4)
+
+        assert mock_pool_get.call_count == 2
+        assert mock_create_backend.call_count == 0
+
+    @patch("soundfile.write")
+    @patch("wakeword_workbench.dataset.positive_generator.BackendPool.get")
+    def test_voice_grouping_preserves_round_robin_distribution(
+        self,
+        mock_pool_get: MagicMock,
+        mock_sf_write: MagicMock,
+        tmp_path: Path,
+        output_dir: Path,
+        mock_tts_result: TTSResult,
+    ) -> None:
+        """Grouped execution should keep the original round-robin voice balance."""
+        config = Config(
+            wake_word="hey_vera",
+            samples=SamplesConfig(positives=100, negatives_multiplier=5),
+            tts=TTSConfig(
+                providers=[
+                    TTSProviderConfig(backend="kokoro", voices=["af_sarah", "am_adam"], speed=1.0)
+                ]
+            ),
+            augmentation=AugmentationConfig(
+                noise_snr=[-10, 10],
+                reverb_probability=0.5,
+                gain_range=[-45, 0],
+            ),
+            output=OutputConfig(path=str(tmp_path / "output"), format=["microwakeword"]),
+        )
+
+        backend = MagicMock()
+        backend.synthesize.return_value = mock_tts_result
+        backend.set_voice.return_value = None
+        mock_pool_get.return_value = backend
+        mock_sf_write.side_effect = lambda path, audio, sr: _real_write(path, audio, sr)
+
+        manifest_path = PositiveGenerator(config, output_dir).generate(100)
+
+        with open(manifest_path, encoding="utf-8") as f:
+            entries = [json.loads(line) for line in f]
+
+        voice_counts = {"af_sarah": 0, "am_adam": 0}
+        for entry in entries:
+            voice_counts[entry["voice"]] += 1
+
+        assert 45 <= voice_counts["af_sarah"] <= 55
+        assert 45 <= voice_counts["am_adam"] <= 55
+
+    @patch("soundfile.write")
+    @patch("wakeword_workbench.dataset.positive_generator.BackendPool.get")
+    def test_voice_grouping_preserves_output_manifest_and_filenames(
+        self,
+        mock_pool_get: MagicMock,
+        mock_sf_write: MagicMock,
+        mock_config: Config,
+        output_dir: Path,
+        mock_tts_result: TTSResult,
+    ) -> None:
+        """Refactor should not change output file naming or manifest structure."""
+        backend = MagicMock()
+        backend.synthesize.return_value = mock_tts_result
+        backend.set_voice.return_value = None
+        mock_pool_get.return_value = backend
+        mock_sf_write.side_effect = lambda path, audio, sr: _real_write(path, audio, sr)
+
+        manifest_path = PositiveGenerator(mock_config, output_dir).generate(10)
+
+        wav_files = list(output_dir.glob("*.wav"))
+        assert len(wav_files) == 10
+
+        with open(manifest_path, encoding="utf-8") as f:
+            entries = [json.loads(line) for line in f]
+
+        assert len(entries) == 10
+        for idx, entry in enumerate(entries):
+            expected_path = f"hey_vera_{entry['voice']}_{idx:04d}.wav"
+            assert entry["path"] == expected_path
+            assert set(entry) == {"path", "label", "text", "voice", "backend", "duration_ms"}
+            assert (output_dir / entry["path"]).exists()
 
     @patch("wakeword_workbench.dataset.positive_generator.list_available_backends")
     def test_create_backend_for_provider_passes_supported_runtime_options(

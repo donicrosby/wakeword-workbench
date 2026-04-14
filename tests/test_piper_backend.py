@@ -262,6 +262,111 @@ class TestPiperBackendSetVoice:
                 assert "Failed to download" in str(exc_info.value)
 
 
+class TestPiperBackendVoiceCache:
+    """Tests for PiperBackend class-level voice model cache."""
+
+    def test_voice_cache_hit_reuses_loaded_model(self, tmp_path: Path) -> None:
+        """Repeated set_voice() for same voice should not reload Piper model."""
+        import wakeword_workbench.tts.piper_backend as piper_module
+
+        model_path = tmp_path / "en_US-lessac-high.onnx"
+        model_path.touch()
+
+        lessac_path = tmp_path / "en_US-lessac-high.onnx"
+        lessac_path.touch(exist_ok=True)
+
+        mock_voice = MagicMock()
+        piper_module._PIPER_AVAILABLE = True
+        piper_module.PiperBackend._voice_cache.clear()
+
+        with patch.object(piper_module, "PiperVoice", mock_voice):
+            with patch.object(
+                piper_module.PiperBackend,
+                "_download_voice_model",
+                return_value=lessac_path,
+            ):
+                backend = piper_module.PiperBackend(model_path=str(model_path))
+                backend.set_voice("en_US-lessac-high")
+                backend.set_voice("en_US-lessac-high")
+
+        assert mock_voice.load.call_count == 1
+
+    def test_voice_cache_miss_loads_different_voice(self, tmp_path: Path) -> None:
+        """Switching to a different voice should load once, then cache it."""
+        import wakeword_workbench.tts.piper_backend as piper_module
+
+        initial_model_path = tmp_path / "en_US-lessac-high.onnx"
+        initial_model_path.touch()
+
+        ryan_path = tmp_path / "en_US-ryan-high.onnx"
+        ryan_path.touch()
+
+        mock_voice = MagicMock()
+        piper_module._PIPER_AVAILABLE = True
+        piper_module.PiperBackend._voice_cache.clear()
+
+        with patch.object(piper_module, "PiperVoice", mock_voice):
+            with patch.object(
+                piper_module.PiperBackend,
+                "_download_voice_model",
+                return_value=ryan_path,
+            ):
+                backend = piper_module.PiperBackend(model_path=str(initial_model_path))
+                backend.set_voice("en_US-ryan-high")
+
+        assert mock_voice.load.call_count == 2
+
+    def test_voice_cache_lru_eviction_reloads_evicted_voice(self, tmp_path: Path) -> None:
+        """LRU eviction should drop oldest voice and force reload on reuse."""
+        import wakeword_workbench.tts.piper_backend as piper_module
+
+        initial_model_path = tmp_path / "en_US-lessac-high.onnx"
+        initial_model_path.touch()
+
+        voice_paths = {
+            "en_US-lessac-high": tmp_path / "en_US-lessac-high.onnx",
+            "en_US-ryan-high": tmp_path / "en_US-ryan-high.onnx",
+            "en_US-ljspeech-high": tmp_path / "en_US-ljspeech-high.onnx",
+            "en_US-libritts-high": tmp_path / "en_US-libritts-high.onnx",
+        }
+        for path in voice_paths.values():
+            path.touch(exist_ok=True)
+
+        mock_voice = MagicMock()
+        piper_module._PIPER_AVAILABLE = True
+        piper_module.PiperBackend._voice_cache.clear()
+        original_cache_limit = piper_module.PiperBackend._MAX_CACHED_VOICES
+        piper_module.PiperBackend._MAX_CACHED_VOICES = 3
+
+        def _download_voice_model(voice: str) -> Path:
+            return voice_paths[voice]
+
+        try:
+            with patch.object(piper_module, "PiperVoice", mock_voice):
+                with patch.object(
+                    piper_module.PiperBackend,
+                    "_download_voice_model",
+                    side_effect=_download_voice_model,
+                ):
+                    backend = piper_module.PiperBackend(model_path=str(initial_model_path))
+                    backend.set_voice("en_US-lessac-high")
+                    backend.set_voice("en_US-ryan-high")
+                    backend.set_voice("en_US-ljspeech-high")
+                    backend.set_voice("en_US-libritts-high")
+
+                    assert set(piper_module.PiperBackend._voice_cache.keys()) == {
+                        "en_US-ryan-high",
+                        "en_US-ljspeech-high",
+                        "en_US-libritts-high",
+                    }
+
+                    backend.set_voice("en_US-lessac-high")
+
+            assert mock_voice.load.call_count == 5
+        finally:
+            piper_module.PiperBackend._MAX_CACHED_VOICES = original_cache_limit
+
+
 class TestPiperBackendListVoices:
     """Tests for PiperBackend.list_voices()."""
 

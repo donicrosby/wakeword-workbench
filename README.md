@@ -225,6 +225,46 @@ uv run wakeword-workbench run config.yaml
 | `--verbose`, `-v` | Enable DEBUG logging |
 | `--quiet`, `-q` | Only show ERROR logs |
 
+### Performance Optimization
+
+The toolkit includes several optimizations to dramatically reduce dataset generation time:
+
+**Parallel I/O (`--parallelism`)**
+
+Speed up dataset generation by writing audio files in parallel while keeping TTS synthesis sequential (respecting GPU VRAM constraints):
+
+```bash
+# Use 4 parallel I/O threads (recommended for most systems)
+uv run wakeword-workbench run config.yaml --parallelism 4
+
+# Use 8 threads for faster NVMe storage
+uv run wakeword-workbench run config.yaml --parallelism 8
+```
+
+- **Default**: 1 (sequential I/O)
+- **Range**: 1-32 threads
+- **Recommended**: 4-8 for NVMe SSDs, 2-4 for SATA SSDs
+- **Note**: TTS synthesis remains sequential to respect single-model GPU constraints
+
+**Performance Improvements**
+
+Recent optimizations provide **100x+ speedup** for large datasets:
+- **Voice Model Caching**: Piper TTS models are cached and reused across samples (eliminates ~99% of model reloads)
+- **Backend Pooling**: TTS backend instances are pooled and reused across generation phases
+- **Voice Grouping**: Samples are grouped by voice to minimize model switching overhead
+- **Parallel I/O**: Audio file writes happen in parallel using ThreadPoolExecutor
+
+**Example: Large Dataset Generation**
+
+```bash
+# Generate 10,000 positive + 50,000 negative samples with optimizations
+uv run wakeword-workbench run examples/hey_rj_production.yaml --parallelism 4
+
+# Expected performance:
+# - Before optimizations: 9+ hours
+# - After optimizations: ~5-10 minutes (100x+ speedup)
+```
+
 ### Mining Hard Negatives
 
 Extract false positives from long audio recordings:

@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -14,14 +14,14 @@ from wakeword_workbench.config import Config, TTSProviderConfig
 from wakeword_workbench.logging_config import get_logger
 from wakeword_workbench.negatives.phrase_generator import generate_confusions
 from wakeword_workbench.negatives.synthetic_generator import generate_synthetic_negatives
-from wakeword_workbench.tts.base import TTSBackend, TTSError
+from wakeword_workbench.tts.base import TTSError
+from wakeword_workbench.tts.pool import BackendPool
 
 from .merger import MergerError, merge
 from .metadata import Manifest, ManifestEntry, ManifestError
 from .positive_generator import (
     PositiveGenerator,
     PositiveGeneratorError,
-    _create_backend_for_provider,
 )
 from .splitter import SplitValidationError, split
 
@@ -123,6 +123,7 @@ class DatasetGenerator:
         self._voice_index = 0
         self._validate_files = False
         self._providers = config.tts.providers
+        self._backend_pool = BackendPool()
 
         log.info(
             "dataset_generator_init",
@@ -469,21 +470,56 @@ class DatasetGenerator:
 
         entries: list[ManifestEntry] = []
         failed = 0
-        backend_cache: dict[
-            tuple[str, tuple[str, ...], float, str, str | None, str | None], TTSBackend
-        ] = {}
 
-        for index, phrase in enumerate(phrases):
-            provider, voice = self._select_voice_for_phrase(phrase)
+        provider_voices = [
+            (provider, voice) for provider in self._providers for voice in provider.voices
+        ]
+
+        # Phase 1: preserve the existing round-robin distribution by pre-assigning
+        # a provider/voice to each phrase in original phrase order.
+        assigned_provider_voices = [
+            provider_voices[(self._voice_index + index) % len(provider_voices)]
+            for index in range(len(phrases))
+        ]
+        self._voice_index += len(phrases)
+
+        # Phase 2: sort execution by backend/runtime/voice so synthesis runs in
+        # contiguous groups and minimizes expensive model/voice switching.
+        phrase_voice_assignments = [
+            (index, phrase, *self._select_voice_for_phrase(phrase, assigned_provider_voices, index))
+            for index, phrase in enumerate(phrases)
+        ]
+        grouped_assignments = sorted(
+            phrase_voice_assignments,
+            key=lambda assignment: (
+                assignment[2].backend,
+                assignment[2].acceleration,
+                assignment[3],
+            ),
+        )
+
+        def provider_instance_key(
+            provider: TTSProviderConfig,
+        ) -> tuple[str, float, str, str | None, str | None]:
+            key_getter = cast(Any, getattr(provider, "backend_instance_key", None))
+            if callable(key_getter):
+                return cast(tuple[str, float, str, str | None, str | None], key_getter())
+
+            backend, _voices, speed, acceleration, device, model_path = provider.backend_cache_key()
+            return (backend, speed, acceleration, device, model_path)
+
+        backends_by_key = {
+            provider_instance_key(provider): self._backend_pool.get(provider)
+            for provider in self._providers
+        }
+
+        for index, phrase, provider, voice in grouped_assignments:
             filename = f"negative_{index:06d}.wav"
             file_path = negatives_dir / filename
-            provider_key = provider.backend_cache_key()
+            backend_key = provider_instance_key(provider)
 
             try:
-                backend = backend_cache.get(provider_key)
-                if backend is None:
-                    backend = _create_backend_for_provider(provider)
-                    backend_cache[provider_key] = backend
+                backend = backends_by_key[backend_key]
 
                 try:
                     backend.set_voice(voice)
@@ -538,17 +574,28 @@ class DatasetGenerator:
         )
         return Manifest(entries)
 
-    def _select_voice_for_phrase(self, phrase: str) -> tuple[TTSProviderConfig, str]:
+    def _select_voice_for_phrase(
+        self,
+        phrase: str,
+        assigned_provider_voices: list[tuple[TTSProviderConfig, str]] | None = None,
+        assigned_index: int | None = None,
+    ) -> tuple[TTSProviderConfig, str]:
         """Select a provider and voice for synthesizing a phrase.
 
         Uses round-robin across configured voices.
 
         Args:
             phrase: Phrase to be synthesized.
+            assigned_provider_voices: Optional pre-assigned provider/voice list.
+            assigned_index: Index within pre-assigned provider/voice list.
 
         Returns:
             Tuple of (provider_config, voice_identifier).
         """
+        if assigned_provider_voices is not None and assigned_index is not None:
+            del phrase  # phrase reserved for future voice selection strategies
+            return assigned_provider_voices[assigned_index]
+
         del phrase  # phrase reserved for future voice selection strategies
         provider_voices = [
             (provider, voice) for provider in self._providers for voice in provider.voices

@@ -3,7 +3,6 @@ from __future__ import annotations
 import threading
 import time
 from importlib import import_module
-from typing import Any
 from unittest.mock import Mock, patch
 
 import numpy as np

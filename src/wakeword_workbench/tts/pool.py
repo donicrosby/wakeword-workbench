@@ -10,8 +10,9 @@ Usage pattern:
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, cast
+from typing import cast
 
 from wakeword_workbench.config import TTSProviderConfig
 

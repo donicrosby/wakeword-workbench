@@ -83,6 +83,14 @@ def cli_main(
 @app.command(name="run")
 def run_command(
     config_path: Annotated[Path, typer.Argument(help="Path to config file")],
+    parallelism: int = typer.Option(
+        1,
+        "--parallelism",
+        "-p",
+        help="Number of I/O worker threads (not TTS concurrency). TTS remains sequential, only file I/O is parallelized.",
+        min=1,
+        max=32,
+    ),
 ) -> None:
     """Run the full training pipeline from a config file."""
     console.print(
@@ -119,7 +127,7 @@ def run_command(
         # Instantiate and run dataset generator
         try:
             generator = DatasetGenerator(config)
-            result = generator.generate()
+            result = generator.generate(parallelism=parallelism)
         except GeneratorError as e:
             console.print(f"[bold red]Error:[/bold red] {e}")
             log.error("generation-failed", error=str(e))

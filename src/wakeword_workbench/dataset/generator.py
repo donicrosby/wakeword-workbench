@@ -122,6 +122,7 @@ class DatasetGenerator:
         self.output_dir = Path(output_dir) if output_dir is not None else Path(config.output.path)
         self._voice_index = 0
         self._validate_files = False
+        self._parallelism = 1
         self._providers = config.tts.providers
         self._backend_pool = BackendPool()
 
@@ -142,6 +143,7 @@ class DatasetGenerator:
         test_ratio: float = 0.15,
         ratio: float | None = None,
         validate_files: bool = False,
+        parallelism: int = 1,
     ) -> GenerationResult:
         """Generate a complete dataset with train/val/test splits.
 
@@ -153,6 +155,8 @@ class DatasetGenerator:
             test_ratio: Fraction for test split.
             ratio: Target neg:pos ratio for merge; None uses all negatives.
             validate_files: Whether to validate referenced files exist.
+            parallelism: Number of I/O worker threads (1-32). TTS remains sequential,
+                only file I/O is parallelized. Defaults to 1.
 
         Returns:
             GenerationResult with manifests and generation statistics.
@@ -188,10 +192,13 @@ class DatasetGenerator:
             raise GeneratorConfigError("train_ratio + val_ratio + test_ratio must sum to 1.0")
         if ratio is not None and ratio <= 0:
             raise GeneratorConfigError(f"ratio must be positive when provided, got {ratio}")
+        if parallelism < 1 or parallelism > 32:
+            raise GeneratorConfigError(f"parallelism must be between 1 and 32, got {parallelism}")
 
         total_negatives_target = resolved_positive_count * resolved_neg_multiplier
         output_dir = self._ensure_output_dir()
         self._validate_files = validate_files
+        self._parallelism = parallelism
 
         self._log_progress("start", "beginning dataset generation")
         log.info(
@@ -204,6 +211,7 @@ class DatasetGenerator:
             split_test=test_ratio,
             merge_ratio=ratio,
             validate_files=validate_files,
+            parallelism=parallelism,
         )
 
         self._log_progress("positives", "generating positive samples")

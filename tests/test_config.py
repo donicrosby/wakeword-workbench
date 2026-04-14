@@ -637,3 +637,158 @@ def test_config_error_inherits_from_exception() -> None:
     error = ConfigError("test error")
     assert isinstance(error, Exception)
     assert str(error) == "test error"
+
+
+# --- TTSProviderConfig.backend_instance_key Tests ---
+
+
+class TestBackend_instance_key:
+    """Tests for TTSProviderConfig.backend_instance_key()."""
+
+    def test_basic_key_excludes_voices(self) -> None:
+        """backend_instance_key should exclude voices field from the key."""
+        config = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_sarah", "af_nicole"],
+            speed=1.0,
+            acceleration="cuda",
+            device="GPU",
+            model_path="/models/kokoro.bin",
+        )
+
+        key = config.backend_instance_key()
+
+        assert key == ("kokoro", 1.0, "cuda", "GPU", "/models/kokoro.bin")
+
+    def test_key_excludes_voices_even_with_single_voice(self) -> None:
+        """backend_instance_key excludes voices even when only one voice is configured."""
+        config = TTSProviderConfig(
+            backend="piper",
+            voices=["en_US-amy-low"],
+            speed=1.2,
+            acceleration="cpu",
+        )
+
+        key = config.backend_instance_key()
+
+        assert key == ("piper", 1.2, "cpu", None, None)
+
+    def test_different_voices_same_key(self) -> None:
+        """Different voice selections should produce the same backend_instance_key."""
+        config1 = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_sarah"],
+            speed=1.0,
+            acceleration="cuda",
+        )
+        config2 = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_nicole", "am_adam"],
+            speed=1.0,
+            acceleration="cuda",
+        )
+
+        assert config1.backend_instance_key() == config2.backend_instance_key()
+
+    def test_different_speed_different_key(self) -> None:
+        """Different speeds should produce different backend_instance_keys."""
+        config1 = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_sarah"],
+            speed=1.0,
+            acceleration="cuda",
+        )
+        config2 = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_sarah"],
+            speed=1.5,
+            acceleration="cuda",
+        )
+
+        assert config1.backend_instance_key() != config2.backend_instance_key()
+
+    def test_different_backend_different_key(self) -> None:
+        """Different backends should produce different backend_instance_keys."""
+        config1 = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_sarah"],
+            speed=1.0,
+            acceleration="cuda",
+        )
+        config2 = TTSProviderConfig(
+            backend="piper",
+            voices=["en_US-amy-low"],
+            speed=1.0,
+            acceleration="cuda",
+        )
+
+        assert config1.backend_instance_key() != config2.backend_instance_key()
+
+    def test_different_acceleration_different_key(self) -> None:
+        """Different acceleration settings should produce different backend_instance_keys."""
+        config1 = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_sarah"],
+            speed=1.0,
+            acceleration="cpu",
+        )
+        config2 = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_sarah"],
+            speed=1.0,
+            acceleration="cuda",
+        )
+
+        assert config1.backend_instance_key() != config2.backend_instance_key()
+
+    def test_different_device_different_key(self) -> None:
+        """Different devices should produce different backend_instance_keys."""
+        config1 = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_sarah"],
+            speed=1.0,
+            acceleration="cuda",
+            device="cuda:0",
+        )
+        config2 = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_sarah"],
+            speed=1.0,
+            acceleration="cuda",
+            device="cuda:1",
+        )
+
+        assert config1.backend_instance_key() != config2.backend_instance_key()
+
+    def test_different_model_path_different_key(self) -> None:
+        """Different model paths should produce different backend_instance_keys."""
+        config1 = TTSProviderConfig(
+            backend="piper",
+            voices=["en_US-amy-low"],
+            speed=1.0,
+            acceleration="cuda",
+            model_path="/models/amy-v1.onnx",
+        )
+        config2 = TTSProviderConfig(
+            backend="piper",
+            voices=["en_US-amy-low"],
+            speed=1.0,
+            acceleration="cuda",
+            model_path="/models/amy-v2.onnx",
+        )
+
+        assert config1.backend_instance_key() != config2.backend_instance_key()
+
+    def test_returns_correct_tuple_type(self) -> None:
+        """backend_instance_key should return a tuple with exactly 5 elements."""
+        config = TTSProviderConfig(
+            backend="kokoro",
+            voices=["af_sarah"],
+            speed=1.0,
+            acceleration="cuda",
+        )
+
+        key = config.backend_instance_key()
+
+        assert isinstance(key, tuple)
+        assert len(key) == 5

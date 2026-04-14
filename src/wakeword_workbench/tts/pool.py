@@ -73,8 +73,8 @@ class BackendPool:
                 return cached
 
             instance_lock = threading.Lock()
-            backend = get_backend(provider.backend)
-            locked_backend = _LockedBackend(backend=backend, lock=instance_lock)
+            backend_instance = get_backend(provider.backend)
+            locked_backend = _LockedBackend(backend=backend_instance, lock=instance_lock)
             self._instance_locks[key] = instance_lock
             self._pool[key] = locked_backend
             return locked_backend

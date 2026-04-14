@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import time
 from dataclasses import dataclass, field
 from importlib import import_module
@@ -215,7 +216,7 @@ class DatasetGenerator:
         )
 
         self._log_progress("positives", "generating positive samples")
-        pos_manifest = self._generate_positives(resolved_positive_count)
+        pos_manifest = self._generate_positives(resolved_positive_count, parallelism)
 
         self._log_progress("negative_phrases", "generating negative phrases")
         negative_phrases = self._generate_negative_phrases(total_negatives_target)
@@ -266,11 +267,12 @@ class DatasetGenerator:
         log.info("dataset_generation_complete", **result.summary())
         return result
 
-    def _generate_positives(self, count: int) -> Manifest:
+    def _generate_positives(self, count: int, parallelism: int = 1) -> Manifest:
         """Generate positive samples via PositiveGenerator.
 
         Args:
             count: Number of positive samples.
+            parallelism: Number of I/O worker threads for parallel file writing.
 
         Returns:
             Manifest with positive entries.
@@ -279,7 +281,7 @@ class DatasetGenerator:
             GeneratorIOError: Positive generation failed.
         """
         try:
-            generator = PositiveGenerator(self.config, self.output_dir)
+            generator = PositiveGenerator(self.config, self.output_dir, parallelism=parallelism)
             manifest_path = generator.generate(count)
             manifest = Manifest.load(manifest_path)
         except (PositiveGeneratorError, ManifestError, OSError) as exc:
@@ -521,6 +523,9 @@ class DatasetGenerator:
             for provider in self._providers
         }
 
+        # Collect write operations for parallel I/O
+        write_operations: list[tuple[Path, np.ndarray, ManifestEntry]] = []
+
         for index, phrase, provider, voice in grouped_assignments:
             filename = f"negative_{index:06d}.wav"
             file_path = negatives_dir / filename
@@ -542,21 +547,20 @@ class DatasetGenerator:
                 result = backend.synthesize(phrase)
                 audio = self._ensure_format(result.audio, result.sample_rate)
                 audio = self._ensure_mono(audio)
-                soundfile = import_module("soundfile")
-                soundfile.write(file_path, audio, 16000)
 
                 duration_ms = int(len(audio) / 16000 * 1000)
-                entries.append(
-                    ManifestEntry(
-                        path=f"negatives/{filename}",
-                        label=0,
-                        text=phrase,
-                        voice=voice,
-                        backend=provider.backend,
-                        duration_ms=duration_ms,
-                        sample_rate=16000,
-                    )
+                entry = ManifestEntry(
+                    path=f"negatives/{filename}",
+                    label=0,
+                    text=phrase,
+                    voice=voice,
+                    backend=provider.backend,
+                    duration_ms=duration_ms,
+                    sample_rate=16000,
                 )
+
+                # Store for parallel write
+                write_operations.append((file_path, audio, entry))
             except (TTSError, OSError, ValueError) as exc:
                 failed += 1
                 log.warning(
@@ -566,6 +570,44 @@ class DatasetGenerator:
                     voice=voice,
                     error=str(exc),
                 )
+
+        # Perform parallel file I/O for WAV writes
+        if write_operations:
+            if self._parallelism > 1:
+                soundfile = import_module("soundfile")
+                with concurrent.futures.ThreadPoolExecutor(max_workers=self._parallelism) as pool:
+                    futures = {
+                        pool.submit(soundfile.write, file_path, audio, 16000): entry
+                        for file_path, audio, entry in write_operations
+                    }
+                    done, not_done = concurrent.futures.wait(futures.keys())
+
+                    for future in done:
+                        entry = futures[future]
+                        try:
+                            future.result()
+                            entries.append(entry)
+                        except (OSError, ValueError) as exc:
+                            failed += 1
+                            log.error(
+                                "negative_file_write_failed",
+                                path=entry.path,
+                                error=str(exc),
+                            )
+            else:
+                # Sequential I/O when parallelism is 1
+                soundfile = import_module("soundfile")
+                for file_path, audio, entry in write_operations:
+                    try:
+                        soundfile.write(file_path, audio, 16000)
+                        entries.append(entry)
+                    except (OSError, ValueError) as exc:
+                        failed += 1
+                        log.error(
+                            "negative_file_write_failed",
+                            path=entry.path,
+                            error=str(exc),
+                        )
 
         if not entries:
             raise GeneratorTTSError(

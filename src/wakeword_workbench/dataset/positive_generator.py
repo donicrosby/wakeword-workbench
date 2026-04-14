@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import inspect
 import json
 from importlib import import_module
@@ -88,12 +89,14 @@ class PositiveGenerator:
         output_dir: Directory where generated samples will be saved.
     """
 
-    def __init__(self, config: Config, output_dir: Path) -> None:
+    def __init__(self, config: Config, output_dir: Path, parallelism: int = 1) -> None:
         """Initialize the positive sample generator.
 
         Args:
             config: Configuration object with wake_word, tts, and samples settings.
             output_dir: Directory path where generated audio files will be saved.
+            parallelism: Number of I/O worker threads (1-32). TTS remains sequential,
+                only file I/O is parallelized. Defaults to 1.
 
         Raises:
             PositiveGeneratorError: If critical initialization fails.
@@ -103,6 +106,7 @@ class PositiveGenerator:
         self._wake_word = config.wake_word
         self._providers = config.tts.providers
         self._backend_pool = BackendPool()
+        self._parallelism = parallelism
 
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -191,6 +195,9 @@ class PositiveGenerator:
         active_group: tuple[str, str, str] | None = None
         active_voice_by_backend: dict[tuple[str, float, str, str | None, str | None], str] = {}
 
+        # Collect write operations for parallel I/O
+        write_operations: list[tuple[Path, np.ndarray, dict]] = []
+
         # Progress tracking
         with Progress(
             SpinnerColumn(),
@@ -247,24 +254,21 @@ class PositiveGenerator:
                     audio = self._ensure_format(result.audio, result.sample_rate)
                     audio = self._ensure_mono(audio)
 
-                    # Save WAV file
-                    soundfile = import_module("soundfile")
-                    soundfile.write(file_path, audio, 16000)
-
                     # Calculate duration in milliseconds
                     duration_ms = int(len(audio) / 16000 * 1000)
 
-                    # Add to manifest
-                    manifest_entries.append(
-                        {
-                            "path": filename,
-                            "label": 1,
-                            "text": phrase,
-                            "voice": voice,
-                            "backend": provider.backend,
-                            "duration_ms": duration_ms,
-                        }
-                    )
+                    # Create manifest entry
+                    entry = {
+                        "path": filename,
+                        "label": 1,
+                        "text": phrase,
+                        "voice": voice,
+                        "backend": provider.backend,
+                        "duration_ms": duration_ms,
+                    }
+
+                    # Store for parallel write
+                    write_operations.append((file_path, audio, entry))
 
                     generated_count += 1
                     file_index += 1
@@ -291,6 +295,42 @@ class PositiveGenerator:
                         error=str(e),
                     )
                     continue
+
+        # Perform parallel file I/O for WAV writes
+        if write_operations:
+            if self._parallelism > 1:
+                soundfile = import_module("soundfile")
+                with concurrent.futures.ThreadPoolExecutor(max_workers=self._parallelism) as pool:
+                    futures = {
+                        pool.submit(soundfile.write, file_path, audio, 16000): entry
+                        for file_path, audio, entry in write_operations
+                    }
+                    done, _not_done = concurrent.futures.wait(futures.keys())
+
+                    for future in done:
+                        entry = futures[future]
+                        try:
+                            future.result()
+                            manifest_entries.append(entry)
+                        except (OSError, ValueError) as exc:
+                            log.error(
+                                "positive_file_write_failed",
+                                path=str(entry["path"]),
+                                error=str(exc),
+                            )
+            else:
+                # Sequential I/O when parallelism is 1
+                soundfile = import_module("soundfile")
+                for file_path, audio, entry in write_operations:
+                    try:
+                        soundfile.write(file_path, audio, 16000)
+                        manifest_entries.append(entry)
+                    except (OSError, ValueError) as exc:
+                        log.error(
+                            "positive_file_write_failed",
+                            path=str(entry["path"]),
+                            error=str(exc),
+                        )
 
         # Write manifest
         manifest_path = self.output_dir / "positive_manifest.jsonl"
